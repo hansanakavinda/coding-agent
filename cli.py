@@ -184,6 +184,7 @@ def execute_agent_task(
     session_id: str | None = None,
     initial_messages: list[dict] | None = None,
     model: str = DEFAULT_MODEL,
+    quiet_header: bool = False,
 ) -> None:
     """Run the agent loop on a single user prompt."""
     config_mgr = ConfigManager()
@@ -214,10 +215,11 @@ def execute_agent_task(
         initial_messages=initial_messages,
     )
 
-    console.print(f"[bold blue]Workspace Root:[/] {project_root}")
-    console.print(f"[bold cyan]Session ID:[/]     {active_session_id}")
-    console.print(f"[bold magenta]Model Target:[/]   {model}")
-    console.print(f"[bold blue]Task:[/]           {task}\n")
+    if not quiet_header:
+        console.print(f"[bold blue]Workspace Root:[/] {project_root}")
+        console.print(f"[bold cyan]Session ID:[/]     {active_session_id}")
+        console.print(f"[bold magenta]Model Target:[/]   {model}")
+        console.print(f"[bold blue]Task:[/]           {task}\n")
 
     try:
         loop.run(task)
@@ -229,7 +231,193 @@ def execute_agent_task(
                 border_style="red",
             )
         )
-        raise typer.Exit(code=1) from err
+        if not quiet_header:
+            raise typer.Exit(code=1) from err
+
+
+def display_welcome_banner(workspace: Path, model: str, session_id: str) -> None:
+    """Render a clean welcome banner with workspace and session info."""
+    welcome_text = (
+        f"[bold white]Free Coding Agent[/] [dim]({model})[/]\n"
+        f"[dim]Workspace:[/] [blue]{workspace}[/]\n"
+        f"[dim]Session:[/]   [cyan]{session_id}[/]\n\n"
+        f"Type your task or instruction to begin.\n"
+        f"Commands: [cyan]/new-chat[/], [cyan]/history[/], [cyan]/model[/], [cyan]/clear[/], [cyan]/help[/], [cyan]/exit[/]"
+    )
+    console.print(Panel(welcome_text, border_style="bright_blue", padding=(1, 2)))
+
+
+def display_slash_help() -> None:
+    """Display table of available interactive slash commands."""
+    table = Table(title="Interactive Slash Commands", border_style="cyan")
+    table.add_column("Command", style="bold cyan", no_wrap=True)
+    table.add_column("Description", style="white")
+    table.add_row("/new-chat, /new", "Start a brand new conversation with clean context")
+    table.add_row("/history, /sessions", "List past conversation sessions and resume one")
+    table.add_row("/model", "View or change the active LLM identifier")
+    table.add_row("/clear", "Clear terminal screen while keeping conversation context")
+    table.add_row("/help", "Show this list of commands")
+    table.add_row("/exit, /quit", "Exit Free Coding Agent")
+    console.print(table)
+
+
+def prompt_select_history(sm: SessionManager) -> tuple[str, list[dict]] | None:
+    """Display session history table and prompt user to select a session to resume."""
+    all_sessions = sm.list_sessions()
+    if not all_sessions:
+        console.print("[yellow]No saved sessions found for this workspace.[/]")
+        return None
+
+    table = Table(title="Chat Session History", border_style="blue")
+    table.add_column("#", style="bold yellow", justify="right", width=3)
+    table.add_column("Session ID", style="cyan", no_wrap=True)
+    table.add_column("Last Active", style="dim")
+    table.add_column("Msgs", justify="right")
+    table.add_column("Topic / First Task", style="green")
+
+    for idx, s in enumerate(all_sessions, start=1):
+        task_preview = s["task"][:50] + ("..." if len(s["task"]) > 50 else "")
+        table.add_row(
+            str(idx),
+            s["session_id"],
+            s["updated_at"][:19].replace("T", " "),
+            str(s["message_count"]),
+            task_preview,
+        )
+    console.print(table)
+
+    choice = Prompt.ask(
+        "\n[bold green]Enter session # or ID to resume (or press Enter to cancel)[/]",
+        default="",
+    ).strip()
+
+    if not choice:
+        return None
+
+    target_id: str | None = None
+    if choice.isdigit():
+        index = int(choice) - 1
+        if 0 <= index < len(all_sessions):
+            target_id = all_sessions[index]["session_id"]
+        else:
+            console.print(f"[red]Invalid selection number: {choice}[/]")
+            return None
+    else:
+        target_id = choice
+
+    loaded = sm.load_session(target_id)
+    if not loaded:
+        console.print(f"[red]Session '{target_id}' not found.[/]")
+        return None
+
+    console.print(
+        f"[green]✓ Resumed session:[/] [cyan]{loaded.session_id}[/] "
+        f"[dim]({len(loaded.messages)} messages, Topic: '{loaded.task}')[/]"
+    )
+    return loaded.session_id, loaded.messages
+
+
+def handle_model_switch(current_model: str) -> str:
+    """Prompt user to view or change the active model."""
+    console.print(f"Current model: [bold cyan]{current_model}[/]")
+    new_model = Prompt.ask(
+        "[bold green]Enter new model identifier (or press Enter to keep current)[/]",
+        default="",
+    ).strip()
+    if new_model:
+        console.print(f"[green]✓ Switched model to:[/] [bold cyan]{new_model}[/]")
+        return new_model
+    return current_model
+
+
+def run_interactive_session(
+    workspace: Path,
+    auto_approve: bool = False,
+    initial_model: str = DEFAULT_MODEL,
+    resume_session_id: str | None = None,
+) -> None:
+    """Launch full interactive conversational coding session."""
+    config_mgr = ConfigManager()
+    resolve_api_key(config_mgr)
+    sm = SessionManager(workspace)
+
+    current_model = initial_model
+    current_session_id = resume_session_id or sm.generate_session_id()
+    messages: list[dict] | None = None
+
+    if resume_session_id:
+        loaded = sm.load_session(resume_session_id)
+        if loaded:
+            messages = loaded.messages
+            console.print(f"[green]✓ Resumed session:[/] [cyan]{loaded.session_id}[/]")
+        else:
+            console.print(f"[yellow]Session '{resume_session_id}' not found. Starting fresh session.[/]")
+
+    display_welcome_banner(workspace, current_model, current_session_id)
+
+    while True:
+        try:
+            user_input = Prompt.ask("\n[bold cyan]agent>[/]").strip()
+            if not user_input:
+                continue
+
+            # Process slash commands
+            if user_input.startswith("/"):
+                cmd = user_input.lower().split()[0]
+                if cmd in ("/exit", "/quit"):
+                    console.print("[dim]Goodbye![/]")
+                    break
+                elif cmd in ("/help", "/?"):
+                    display_slash_help()
+                    continue
+                elif cmd in ("/new", "/new-chat"):
+                    current_session_id = sm.generate_session_id()
+                    messages = None
+                    console.print(f"[bold green]✓ Started new chat session:[/] [cyan]{current_session_id}[/]")
+                    continue
+                elif cmd in ("/history", "/sessions"):
+                    history_res = prompt_select_history(sm)
+                    if history_res:
+                        current_session_id, messages = history_res
+                    continue
+                elif cmd == "/clear":
+                    console.clear()
+                    display_welcome_banner(workspace, current_model, current_session_id)
+                    continue
+                elif cmd == "/model":
+                    current_model = handle_model_switch(current_model)
+                    continue
+                else:
+                    console.print(f"[yellow]Unknown command '{user_input}'. Type [bold]/help[/] for commands.[/]")
+                    continue
+
+            # Check for plain exit keywords
+            if user_input.lower() in ("exit", "quit", "q"):
+                console.print("[dim]Goodbye![/]")
+                break
+
+            # Execute conversational turn
+            execute_agent_task(
+                task=user_input,
+                project_root=workspace,
+                auto_approve=auto_approve,
+                session_id=current_session_id,
+                initial_messages=messages,
+                model=current_model,
+                quiet_header=True,
+            )
+
+            # Reload updated messages for subsequent conversational turns
+            reloaded = sm.load_session(current_session_id)
+            if reloaded:
+                messages = reloaded.messages
+
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Interrupted. Type /exit to quit or enter a new query.[/]")
+            continue
+        except EOFError:
+            console.print("\n[dim]Goodbye![/]")
+            break
 
 
 @app.command()
@@ -237,7 +425,7 @@ def main(
     task: Annotated[
         Optional[str],
         typer.Argument(
-            help="Task instruction for the coding agent. If omitted, launches interactive REPL."
+            help="Task instruction for the coding agent. If omitted, launches interactive chat session."
         ),
     ] = None,
     workspace: Annotated[
@@ -307,17 +495,17 @@ def main(
         console.print(table)
         return
 
-    # Handle --resume flag
-    initial_messages = None
-    if resume:
-        loaded = sm.load_session(resume)
-        if not loaded:
-            console.print(f"[bold red]Session '{resume}' not found in {sm.storage_dir}[/]")
-            raise typer.Exit(code=1)
-        initial_messages = loaded.messages
-        console.print(f"[bold green]Resuming Session:[/] {loaded.session_id} (Prior task: '{loaded.task}')")
-
+    # Single-task CLI execution
     if task:
+        initial_messages = None
+        if resume:
+            loaded = sm.load_session(resume)
+            if not loaded:
+                console.print(f"[bold red]Session '{resume}' not found in {sm.storage_dir}[/]")
+                raise typer.Exit(code=1)
+            initial_messages = loaded.messages
+            console.print(f"[bold green]Resuming Session:[/] {loaded.session_id} (Prior task: '{loaded.task}')")
+
         execute_agent_task(
             task,
             workspace,
@@ -328,39 +516,13 @@ def main(
         )
         return
 
-    # Interactive REPL mode
-    console.print(
-        Panel(
-            "[bold green]Coding Agent REPL[/]\n"
-            "Type your instruction or prompt. Type [bold red]exit[/] or [bold red]quit[/] to leave.",
-            border_style="blue",
-        )
+    # Interactive conversational flow (Antigravity-style)
+    run_interactive_session(
+        workspace=workspace,
+        auto_approve=yes,
+        initial_model=model,
+        resume_session_id=resume,
     )
-
-    current_session_id = resume or sm.generate_session_id()
-    while True:
-        try:
-            user_input = Prompt.ask(f"\n[bold cyan]agent [{current_session_id}][/]")
-            if not user_input or user_input.strip() == "":
-                continue
-            if user_input.strip().lower() in ("exit", "quit", "q"):
-                console.print("[dim]Goodbye![/]")
-                break
-            execute_agent_task(
-                user_input.strip(),
-                workspace,
-                auto_approve=yes,
-                session_id=current_session_id,
-                initial_messages=initial_messages,
-                model=model,
-            )
-            # Subsequent REPL turns reload the updated messages
-            reloaded = sm.load_session(current_session_id)
-            if reloaded:
-                initial_messages = reloaded.messages
-        except (KeyboardInterrupt, EOFError):
-            console.print("\n[dim]Interrupted. Exiting REPL...[/]")
-            break
 
 
 if __name__ == "__main__":

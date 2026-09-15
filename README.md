@@ -150,8 +150,27 @@ You can also provide your API key via:
 
 You can run Free Coding Agent using any of the installed commands: `free-agent`, `free-coding-agent`, or `agent`.
 
-### 1. Single Task Execution
-Run the agent on a specific instruction in the current directory:
+### 1. Interactive Conversational Mode (Default)
+Simply run `agent` or `free-agent` from any directory to start an interactive pair-programming session:
+```bash
+free-agent
+```
+
+Type your requests naturally and continue chatting. The agent preserves full context across turns.
+
+#### Supported Slash Commands
+Within the interactive prompt, type `/` to access commands:
+| Command | Description |
+| :--- | :--- |
+| `/new-chat`, `/new` | Start a brand new conversation with fresh context |
+| `/history`, `/sessions` | View past sessions for this workspace and select one to resume |
+| `/model` | View or change the active LLM identifier |
+| `/clear` | Clear terminal screen while preserving context |
+| `/help` | Display table of available commands |
+| `/exit`, `/quit` | Exit Free Coding Agent |
+
+### 2. Single Task Execution
+Execute a one-off task instruction directly from the command line:
 ```bash
 free-agent "Inspect pyproject.toml and summarize the project dependencies."
 ```
@@ -161,37 +180,30 @@ Target a different workspace directory:
 free-agent -w C:\path\to\another\project "Find all TODO comments and summarize them"
 ```
 
-### 2. Auto-Approve Confirmations (`--yes` / `-y`)
-By default, destructive actions (`edit_file`, `write_file`, and `run_bash`) prompt for interactive confirmation. Use `-y` to bypass prompts in scripts or automated pipelines:
+### 3. Auto-Approve Confirmations (`--yes` / `-y`)
+By default, destructive actions (`edit_file`, `write_file`, and `run_bash`) prompt for interactive confirmation. Pass `-y` to bypass prompts in scripts or automated pipelines:
 ```bash
 free-agent -y "Run pytest and fix any failing unit tests"
 ```
 
-### 3. Session Persistence & Resumption
+### 4. Session Persistence & Resumption
 Sessions are stored centrally under `~/.free-coding-agent/sessions/` mapped to each workspace path hash:
 
-List saved sessions for the current workspace:
+List saved sessions from the CLI:
 ```bash
 free-agent --sessions
 ```
 
-Resume an existing session to preserve conversation history and context:
+Resume an existing session directly:
 ```bash
-free-agent --resume <session_id> "Now refactor the function you just inspected"
+free-agent --resume <session_id>
 ```
-
-### 4. Interactive REPL Mode
-Launch an interactive shell by running without a task prompt:
-```bash
-free-agent
-```
-Inside the REPL, enter your commands sequentially. The agent preserves conversational context across turns. Type `exit` or `quit` to end the session.
 
 ---
 
 ## Running the Test Suite
 
-Free Coding Agent includes a comprehensive test suite (49 unit tests) covering all tools, security path jailing, ReAct fallback parsing, context truncation, rate-limit recovery, and centralized session persistence:
+Free Coding Agent includes a comprehensive test suite (57 unit tests) covering all tools, security path jailing, ReAct fallback parsing, context truncation, rate-limit recovery, centralized session persistence, and interactive slash commands:
 
 ```bash
 pytest -v
@@ -211,3 +223,5 @@ All tests execute deterministically in isolated temporary directories using mock
 - [x] **Milestone 6: Centralized Zero-Pollution Session Persistence**
 - [x] **Milestone 7: Rich Interactive UX, Unified Diffs & REPL**
 - [x] **Milestone 8: Productization & Packaging (`pipx` / setuptools, `~/.free-coding-agent/config.json`, dynamic rate-limit prompts)**
+- [x] **Milestone 9: Interactive Flow & Slash Commands (`/new-chat`, `/history`, `/model`, `/clear`, `/help`, `/exit`)**
+

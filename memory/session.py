@@ -88,12 +88,14 @@ class SessionManager:
         now = datetime.datetime.now().isoformat()
         filepath = self.storage_dir / f"{session_id}.json"
 
-        # Check for existing creation timestamp
+        # Check for existing creation timestamp and initial task title
         created_at = now
+        task_title = task
         if filepath.exists():
             try:
                 existing = json.loads(filepath.read_text(encoding="utf-8"))
                 created_at = existing.get("created_at", now)
+                task_title = existing.get("task") or task
             except Exception:
                 pass
 
@@ -101,7 +103,7 @@ class SessionManager:
             session_id=session_id,
             created_at=created_at,
             updated_at=now,
-            task=task,
+            task=task_title,
             messages=messages,
             iterations=iterations,
         )
