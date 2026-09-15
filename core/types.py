@@ -1,7 +1,10 @@
 """Core type definitions for the agent framework."""
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
+
+# Callback type signature: confirm(action_name: str, preview_or_diff: str) -> bool
+ConfirmationCallback = Callable[[str, str], bool]
 
 
 @dataclass

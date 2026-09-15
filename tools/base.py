@@ -1,10 +1,9 @@
-"""Base classes and security primitives for agent tools."""
-
+import difflib
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
 
-from core.types import ToolResult
+from core.types import ConfirmationCallback, ToolResult
 
 
 class PathJailError(PermissionError):
@@ -44,6 +43,21 @@ def safe_resolve_path(target_path: str | Path, project_root: Path) -> Path:
     return resolved_target
 
 
+def generate_diff(old_text: str, new_text: str, filename: str) -> str:
+    """Generate a unified diff between old and new text."""
+    old_lines = old_text.splitlines(keepends=True)
+    new_lines = new_text.splitlines(keepends=True)
+    diff = list(
+        difflib.unified_diff(
+            old_lines,
+            new_lines,
+            fromfile=f"a/{filename}",
+            tofile=f"b/{filename}",
+        )
+    )
+    return "".join(diff) if diff else "(no differences)"
+
+
 class BaseTool(ABC):
     """Abstract base class for all agent tools."""
 
@@ -63,7 +77,12 @@ class BaseTool(ABC):
         """JSON Schema defining the tool parameters."""
 
     @abstractmethod
-    def execute(self, project_root: Path, **kwargs: Any) -> ToolResult:
+    def execute(
+        self,
+        project_root: Path,
+        confirmation_callback: ConfirmationCallback | None = None,
+        **kwargs: Any,
+    ) -> ToolResult:
         """Execute the tool against the given project root."""
 
     def to_openai_schema(self) -> dict[str, Any]:
@@ -76,3 +95,4 @@ class BaseTool(ABC):
                 "parameters": self.parameters_schema,
             },
         }
+

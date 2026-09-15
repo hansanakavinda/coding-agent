@@ -4,7 +4,8 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
-from core.types import AgentResult, AgentStep
+from core.fallback_parser import generate_prompted_tools_instruction, parse_prompted_tool_calls
+from core.types import AgentResult, AgentStep, ConfirmationCallback, ToolCall
 from providers.base import LLMProvider
 from tools import ToolRegistry, get_default_registry
 
@@ -29,6 +30,8 @@ class AgentLoop:
         system_prompt: str = DEFAULT_SYSTEM_PROMPT,
         max_iterations: int = 15,
         on_step: Callable[[AgentStep], None] | None = None,
+        confirmation_callback: ConfirmationCallback | None = None,
+        enable_prompted_fallback: bool = True,
     ) -> None:
         self.provider = provider
         self.project_root = Path(project_root).resolve()
@@ -36,32 +39,61 @@ class AgentLoop:
         self.system_prompt = system_prompt
         self.max_iterations = max_iterations
         self.on_step = on_step
+        self.confirmation_callback = confirmation_callback
+        self.enable_prompted_fallback = enable_prompted_fallback
 
     def run(self, task: str) -> AgentResult:
         """Execute the agent loop for a user-specified task."""
+        tool_schemas = self.tools.get_schemas()
+
+        full_system_prompt = self.system_prompt
+        if self.enable_prompted_fallback:
+            full_system_prompt += "\n\n" + generate_prompted_tools_instruction(tool_schemas)
+
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": self.system_prompt},
+            {"role": "system", "content": full_system_prompt},
             {"role": "user", "content": task},
         ]
-        tool_schemas = self.tools.get_schemas()
         recorded_steps: list[AgentStep] = []
+        iteration = 1
+        malformed_retry_count = 0
 
-        for iteration in range(1, self.max_iterations + 1):
+        while iteration <= self.max_iterations:
             response = self.provider.complete(messages=messages, tools=tool_schemas)
 
+            # Check if model emitted content
+            content_text = response.content or ""
+
+            # Check if content has malformed fenced tool calls needing retry
+            thought, prompted_calls, parse_error = parse_prompted_tool_calls(content_text)
+            if parse_error and malformed_retry_count < 1:
+                malformed_retry_count += 1
+                messages.append({"role": "assistant", "content": content_text})
+                retry_prompt = (
+                    f"Tool call parse error: {parse_error}\n"
+                    "Please re-emit your tool call strictly inside a ```json code block with format:\n"
+                    '```json\n{"tool": "tool_name", "args": {"param": "value"}}\n```\n'
+                    "Or provide your final plain text answer."
+                )
+                messages.append({"role": "user", "content": retry_prompt})
+                continue
+
             # Record model thought / text if present
-            if response.content:
+            if content_text:
                 step = AgentStep(
                     kind="thought",
-                    payload={"content": response.content, "model": response.model_used},
+                    payload={"content": content_text, "model": response.model_used},
                 )
                 recorded_steps.append(step)
                 if self.on_step:
                     self.on_step(step)
 
+            # Determine tool calls (native or prompted fallback)
+            active_tool_calls: list[ToolCall] = response.tool_calls or prompted_calls
+
             # Check termination condition: no tool calls requested
-            if not response.has_tool_calls:
-                final_answer = response.content or ""
+            if not active_tool_calls:
+                final_answer = content_text
                 final_step = AgentStep(
                     kind="final_answer",
                     payload={"content": final_answer, "model": response.model_used},
@@ -80,7 +112,7 @@ class AgentLoop:
             # Model requested tool calls: append assistant turn to message history
             assistant_turn: dict[str, Any] = {
                 "role": "assistant",
-                "content": response.content or "",
+                "content": content_text,
                 "tool_calls": [
                     {
                         "id": tc.id,
@@ -90,13 +122,13 @@ class AgentLoop:
                             "arguments": json.dumps(tc.arguments),
                         },
                     }
-                    for tc in response.tool_calls
+                    for tc in active_tool_calls
                 ],
             }
             messages.append(assistant_turn)
 
             # Dispatch each tool call and append tool output to history
-            for tc in response.tool_calls:
+            for tc in active_tool_calls:
                 call_step = AgentStep(
                     kind="tool_call",
                     payload={"id": tc.id, "name": tc.name, "arguments": tc.arguments},
@@ -109,6 +141,7 @@ class AgentLoop:
                     name=tc.name,
                     args=tc.arguments,
                     project_root=self.project_root,
+                    confirmation_callback=self.confirmation_callback,
                 )
 
                 result_step = AgentStep(
@@ -132,6 +165,8 @@ class AgentLoop:
                     "content": result.to_message_content(),
                 }
                 messages.append(tool_message)
+
+            iteration += 1
 
         # Max iterations reached without a clean text response
         max_reached_msg = (

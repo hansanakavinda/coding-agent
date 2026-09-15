@@ -34,7 +34,12 @@ class ReadFileTool(BaseTool):
             "required": ["path"],
         }
 
-    def execute(self, project_root: Path, **kwargs: Any) -> ToolResult:
+    def execute(
+        self,
+        project_root: Path,
+        confirmation_callback: Any = None,
+        **kwargs: Any,
+    ) -> ToolResult:
         raw_path = kwargs.get("path")
         if not raw_path:
             return ToolResult(

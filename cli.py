@@ -19,11 +19,11 @@ from dotenv import load_dotenv
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
-from rich.prompt import Prompt
+from rich.prompt import Confirm, Prompt
 import typer
 
 from core.loop import AgentLoop
-from core.types import AgentStep
+from core.types import AgentStep, ConfirmationCallback
 from providers.openrouter import DEFAULT_CANDIDATE_MODELS, OpenRouterProvider
 from tools import get_default_registry
 
@@ -100,7 +100,35 @@ def handle_fallback(failed_model: str, error: Exception | str) -> None:
     )
 
 
-def execute_agent_task(task: str, project_root: Path) -> None:
+def make_confirmation_callback(auto_approve: bool) -> ConfirmationCallback | None:
+    """Create user confirmation prompt handler unless auto-approve is active."""
+    if auto_approve:
+        return None
+
+    def confirm(action: str, details: str) -> bool:
+        if action == "edit_file":
+            title = "[yellow]Confirm File Edit (Unified Diff)[/]"
+            border_style = "yellow"
+        elif action == "write_file":
+            title = "[yellow]Confirm File Write (Preview)[/]"
+            border_style = "yellow"
+        elif action == "run_bash":
+            title = "[red]Confirm Shell Execution[/]"
+            border_style = "red"
+        else:
+            title = f"[yellow]Confirm Action: {action}[/]"
+            border_style = "yellow"
+
+        console.print(Panel(details, title=title, border_style=border_style))
+        return Confirm.ask(
+            f"[bold]Approve execution of [cyan]{action}[/]?[/]",
+            default=True,
+        )
+
+    return confirm
+
+
+def execute_agent_task(task: str, project_root: Path, auto_approve: bool = False) -> None:
     """Run the agent loop on a single user prompt."""
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
@@ -121,12 +149,14 @@ def execute_agent_task(task: str, project_root: Path) -> None:
         on_fallback=handle_fallback,
     )
     registry = get_default_registry()
+    confirm_cb = make_confirmation_callback(auto_approve)
 
     loop = AgentLoop(
         provider=provider,
         project_root=project_root,
         tools=registry,
         on_step=render_step,
+        confirmation_callback=confirm_cb,
     )
 
     console.print(f"[bold blue]Workspace Root:[/] {project_root}")
@@ -161,10 +191,18 @@ def main(
             help="Directory to use as workspace project root.",
         ),
     ] = Path.cwd(),
+    yes: Annotated[
+        bool,
+        typer.Option(
+            "--yes",
+            "-y",
+            help="Automatically approve file edits, writes, and shell execution without confirmation.",
+        ),
+    ] = False,
 ) -> None:
     """Autonomous CLI Coding Agent powered by OpenRouter."""
     if task:
-        execute_agent_task(task, workspace)
+        execute_agent_task(task, workspace, auto_approve=yes)
         return
 
     # Interactive REPL mode
@@ -184,7 +222,7 @@ def main(
             if user_input.strip().lower() in ("exit", "quit", "q"):
                 console.print("[dim]Goodbye![/]")
                 break
-            execute_agent_task(user_input.strip(), workspace)
+            execute_agent_task(user_input.strip(), workspace, auto_approve=yes)
         except (KeyboardInterrupt, EOFError):
             console.print("\n[dim]Interrupted. Exiting REPL...[/]")
             break
