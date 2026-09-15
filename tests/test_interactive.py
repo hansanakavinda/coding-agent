@@ -101,3 +101,61 @@ def test_interactive_session_slash_commands_flow(tmp_path: Path) -> None:
             auto_approve=True,
             initial_model="openrouter/free",
         )
+
+
+def test_slash_command_completer_all_suggestions() -> None:
+    """Verifies typing '/' yields all available slash command suggestions with metadata."""
+    from prompt_toolkit.document import Document
+    from cli import SlashCommandCompleter
+
+    completer = SlashCommandCompleter()
+    doc = Document("/")
+    completions = list(completer.get_completions(doc, None))
+
+    cmd_names = [c.text for c in completions]
+    assert "/new-chat" in cmd_names
+    assert "/history" in cmd_names
+    assert "/model" in cmd_names
+    assert "/clear" in cmd_names
+    assert "/help" in cmd_names
+    assert "/exit" in cmd_names
+    assert len(completions) == 6
+
+
+def test_slash_command_completer_prefix_filtering() -> None:
+    """Verifies typing '/h' or '/n' narrows down the suggestions accordingly."""
+    from prompt_toolkit.document import Document
+    from cli import SlashCommandCompleter
+
+    completer = SlashCommandCompleter()
+
+    h_completions = list(completer.get_completions(Document("/h"), None))
+    assert [c.text for c in h_completions] == ["/history", "/help"]
+
+    n_completions = list(completer.get_completions(Document("/n"), None))
+    assert [c.text for c in n_completions] == ["/new-chat"]
+
+
+def test_slash_command_completer_ignores_non_slash_input() -> None:
+    """Verifies that normal conversation queries do not trigger slash completions."""
+    from prompt_toolkit.document import Document
+    from cli import SlashCommandCompleter
+
+    completer = SlashCommandCompleter()
+
+    # Normal text
+    assert list(completer.get_completions(Document("inspect files"), None)) == []
+
+    # Slash command followed by arguments
+    assert list(completer.get_completions(Document("/model extra"), None)) == []
+
+
+def test_create_prompt_session_non_tty() -> None:
+    """Verifies create_prompt_session returns None in non-interactive/non-TTY environments."""
+    from cli import create_prompt_session
+    import sys
+
+    with patch.object(sys.stdin, "isatty", return_value=False):
+        session = create_prompt_session()
+        assert session is None
+

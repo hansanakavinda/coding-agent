@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 import sys
-from typing import Annotated, Optional
+from typing import Annotated, Any, Optional
 
 # Ensure standard output streams support UTF-8 on Windows
 if sys.platform == "win32":
@@ -15,6 +15,13 @@ if sys.platform == "win32":
     except Exception:
         pass
 
+from prompt_toolkit import PromptSession
+from prompt_toolkit.completion import Completer, Completion
+from prompt_toolkit.document import Document
+from prompt_toolkit.filters import completion_is_selected, has_completions
+from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.styles import Style
 from dotenv import load_dotenv
 from rich.console import Console
 from rich.markdown import Markdown
@@ -330,6 +337,97 @@ def handle_model_switch(current_model: str) -> str:
     return current_model
 
 
+SLASH_COMMAND_SUGGESTIONS: list[tuple[str, str]] = [
+    ("/new-chat", "Start a brand new conversation with fresh context"),
+    ("/history", "View and resume previous chat sessions"),
+    ("/model", "View or change the active LLM identifier"),
+    ("/clear", "Clear terminal screen while keeping context"),
+    ("/help", "Show table of available commands"),
+    ("/exit", "Exit Free Coding Agent"),
+]
+
+
+class SlashCommandCompleter(Completer):
+    """Provides autocomplete suggestions for slash commands when typing '/'."""
+
+    def __init__(self, commands: list[tuple[str, str]] | None = None) -> None:
+        self.commands = commands or SLASH_COMMAND_SUGGESTIONS
+
+    def get_completions(self, document: Document, complete_event: Any):
+        text = document.text_before_cursor
+        # Only suggest when typing a slash command without arguments
+        if text.startswith("/") and " " not in text:
+            word = text.lower()
+            for cmd, desc in self.commands:
+                if cmd.startswith(word):
+                    yield Completion(
+                        cmd,
+                        start_position=-len(text),
+                        display=cmd,
+                        display_meta=desc,
+                    )
+
+
+def create_prompt_session() -> PromptSession | None:
+    """Create a PromptSession with slash command autocompletion and arrow navigation."""
+    if not sys.stdin.isatty():
+        return None
+
+    kb = KeyBindings()
+
+    # Arrow keys navigate completion menu when popup is visible
+    @kb.add("down", filter=has_completions)
+    def _select_next(event):
+        event.current_buffer.complete_next()
+
+    @kb.add("up", filter=has_completions)
+    def _select_prev(event):
+        event.current_buffer.complete_previous()
+
+    # Enter key applies selected suggestion and executes
+    @kb.add("enter", filter=completion_is_selected)
+    def _apply_and_execute(event):
+        buf = event.current_buffer
+        buf.apply_completion(buf.complete_state.current_completion)
+        buf.validate_and_handle()
+
+    style = Style.from_dict({
+        "prompt": "bold #00d7ff",
+        "completion-menu.completion": "bg:#20222b #e0e0e0",
+        "completion-menu.completion.current": "bg:#00d7ff #000000 bold",
+        "completion-menu.meta.completion": "bg:#16171e #8a8f98",
+        "completion-menu.meta.completion.current": "bg:#00b8e6 #000000 italic",
+        "scrollbar.background": "bg:#16171e",
+        "scrollbar.button": "bg:#3a3d4d",
+    })
+
+    completer = SlashCommandCompleter()
+    history = InMemoryHistory()
+
+    try:
+        return PromptSession(
+            completer=completer,
+            complete_while_typing=True,
+            key_bindings=kb,
+            style=style,
+            history=history,
+        )
+    except Exception:
+        try:
+            from prompt_toolkit.output.vt100 import Vt100_Output
+            out = Vt100_Output(sys.stdout, lambda: (80, 24))
+            return PromptSession(
+                completer=completer,
+                complete_while_typing=True,
+                key_bindings=kb,
+                style=style,
+                history=history,
+                output=out,
+            )
+        except Exception:
+            return None
+
+
 def run_interactive_session(
     workspace: Path,
     auto_approve: bool = False,
@@ -354,10 +452,14 @@ def run_interactive_session(
             console.print(f"[yellow]Session '{resume_session_id}' not found. Starting fresh session.[/]")
 
     display_welcome_banner(workspace, current_model, current_session_id)
+    prompt_session = create_prompt_session()
 
     while True:
         try:
-            user_input = Prompt.ask("\n[bold cyan]agent>[/]").strip()
+            if prompt_session is not None:
+                user_input = prompt_session.prompt([("class:prompt", "\nagent> ")]).strip()
+            else:
+                user_input = Prompt.ask("\n[bold cyan]agent>[/]").strip()
             if not user_input:
                 continue
 
