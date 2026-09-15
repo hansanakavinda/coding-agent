@@ -26,7 +26,7 @@ import typer
 from core.loop import AgentLoop
 from core.types import AgentStep, ConfirmationCallback
 from memory.session import SessionManager
-from providers.openrouter import DEFAULT_CANDIDATE_MODELS, OpenRouterProvider
+from providers.openrouter import DEFAULT_MODEL, OpenRouterProvider
 from tools import get_default_registry
 
 # Automatically search and load .env from current directory or parent directories
@@ -136,6 +136,7 @@ def execute_agent_task(
     auto_approve: bool = False,
     session_id: str | None = None,
     initial_messages: list[dict] | None = None,
+    model: str = DEFAULT_MODEL,
 ) -> None:
     """Run the agent loop on a single user prompt."""
     api_key = os.getenv("OPENROUTER_API_KEY")
@@ -153,7 +154,7 @@ def execute_agent_task(
 
     provider = OpenRouterProvider(
         api_key=api_key,
-        candidate_models=DEFAULT_CANDIDATE_MODELS,
+        model=model,
         on_fallback=handle_fallback,
     )
     registry = get_default_registry()
@@ -174,6 +175,7 @@ def execute_agent_task(
 
     console.print(f"[bold blue]Workspace Root:[/] {project_root}")
     console.print(f"[bold cyan]Session ID:[/]     {active_session_id}")
+    console.print(f"[bold magenta]Model Target:[/]   {model}")
     console.print(f"[bold blue]Task:[/]           {task}\n")
 
     try:
@@ -213,6 +215,14 @@ def main(
             help="Automatically approve file edits, writes, and shell execution without confirmation.",
         ),
     ] = False,
+    model: Annotated[
+        str,
+        typer.Option(
+            "--model",
+            "-m",
+            help="Model identifier on OpenRouter (default: 'openrouter/free').",
+        ),
+    ] = DEFAULT_MODEL,
     resume: Annotated[
         Optional[str],
         typer.Option(
@@ -273,6 +283,7 @@ def main(
             auto_approve=yes,
             session_id=resume,
             initial_messages=initial_messages,
+            model=model,
         )
         return
 
@@ -300,6 +311,7 @@ def main(
                 auto_approve=yes,
                 session_id=current_session_id,
                 initial_messages=initial_messages,
+                model=model,
             )
             # Subsequent REPL turns reload the updated messages
             reloaded = sm.load_session(current_session_id)

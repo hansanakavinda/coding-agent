@@ -13,20 +13,18 @@ from providers.base import LLMProvider
 
 logger = logging.getLogger(__name__)
 
-# Primary free models with tool-calling capabilities, ending with meta-router fallback
-DEFAULT_CANDIDATE_MODELS: list[str] = [
-    "nvidia/nemotron-3-super-120b-a12b:free",
-    "google/gemma-4-31b-it:free",
-    "openrouter/free",
-]
+# Default meta-router model that automatically routes to the best available free model
+DEFAULT_MODEL: str = "openrouter/free"
+DEFAULT_CANDIDATE_MODELS: list[str] = [DEFAULT_MODEL]
 
 
 class OpenRouterProvider(LLMProvider):
-    """OpenRouter provider implementing multi-model fallback and tool calling."""
+    """OpenRouter provider implementing automatic free model routing and tool calling."""
 
     def __init__(
         self,
         api_key: str,
+        model: str = DEFAULT_MODEL,
         candidate_models: list[str] | None = None,
         base_url: str = "https://openrouter.ai/api/v1",
         timeout: float = 60.0,
@@ -36,7 +34,10 @@ class OpenRouterProvider(LLMProvider):
         if not api_key:
             raise ValueError("OPENROUTER_API_KEY is required for OpenRouterProvider.")
         self.api_key = api_key
-        self.candidate_models = candidate_models or list(DEFAULT_CANDIDATE_MODELS)
+        if candidate_models:
+            self.candidate_models = list(candidate_models)
+        else:
+            self.candidate_models = [model]
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.on_fallback = on_fallback
