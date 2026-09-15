@@ -16,11 +16,15 @@ if sys.platform == "win32":
         pass
 
 from prompt_toolkit import PromptSession
+from prompt_toolkit.application import Application
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.document import Document
 from prompt_toolkit.filters import completion_is_selected, has_completions
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.layout.containers import HSplit, Window
+from prompt_toolkit.layout.controls import FormattedTextControl
+from prompt_toolkit.layout.layout import Layout
 from prompt_toolkit.styles import Style
 from dotenv import load_dotenv
 from rich.console import Console
@@ -110,30 +114,155 @@ def handle_fallback(failed_model: str, error: Exception | str) -> None:
     )
 
 
+def prompt_action_confirmation(action: str, options: list[str]) -> int:
+    """Prompt user to select a confirmation option using 1/2/3, y/n, or arrow keys."""
+    if not sys.stdin.isatty():
+        choice = Prompt.ask(
+            f"[bold]Approve [cyan]{action}[/]? (1=Yes, 2=No, 3=Always)[/]",
+            choices=["1", "2", "3"],
+            default="1",
+        )
+        return int(choice) - 1
+
+    selected_idx = [0]
+
+    def get_formatted_text():
+        tokens = [
+            ("bold", f"\nSelect an action for {action} "),
+            ("dim", "(Use ↑/↓ arrows or press 1-3, then Enter):\n"),
+        ]
+        for i, opt in enumerate(options):
+            if i == selected_idx[0]:
+                tokens.append(("class:selected", f"  ❯ {opt}\n"))
+            else:
+                tokens.append(("class:unselected", f"    {opt}\n"))
+        return tokens
+
+    kb = KeyBindings()
+
+    @kb.add("up")
+    def _up(event):
+        selected_idx[0] = (selected_idx[0] - 1) % len(options)
+
+    @kb.add("down")
+    def _down(event):
+        selected_idx[0] = (selected_idx[0] + 1) % len(options)
+
+    @kb.add("1")
+    @kb.add("y")
+    def _opt1(event):
+        selected_idx[0] = 0
+        event.app.exit(result=0)
+
+    @kb.add("2")
+    @kb.add("n")
+    def _opt2(event):
+        selected_idx[0] = 1
+        event.app.exit(result=1)
+
+    @kb.add("3")
+    def _opt3(event):
+        selected_idx[0] = 2
+        event.app.exit(result=2)
+
+    @kb.add("enter")
+    def _enter(event):
+        event.app.exit(result=selected_idx[0])
+
+    @kb.add("c-c")
+    @kb.add("escape")
+    def _cancel(event):
+        event.app.exit(result=1)
+
+    style = Style.from_dict({
+        "selected": "bold #00d7ff",
+        "unselected": "#bbbbbb",
+    })
+
+    try:
+        output = None
+        try:
+            from prompt_toolkit.output.defaults import create_output
+            output = create_output()
+        except Exception:
+            from prompt_toolkit.output.vt100 import Vt100_Output
+            output = Vt100_Output(sys.stdout, lambda: (80, 24))
+
+        app = Application(
+            layout=Layout(HSplit([Window(content=FormattedTextControl(get_formatted_text))])),
+            key_bindings=kb,
+            style=style,
+            full_screen=False,
+            erase_when_done=False,
+            output=output,
+        )
+        res = app.run()
+        return res if res is not None else 1
+    except Exception:
+        choice = Prompt.ask(
+            f"[bold]Approve [cyan]{action}[/]? (1=Yes, 2=No, 3=Always)[/]",
+            choices=["1", "2", "3"],
+            default="1",
+        )
+        return int(choice) - 1
+
+
 def make_confirmation_callback(auto_approve: bool) -> ConfirmationCallback | None:
-    """Create user confirmation prompt handler unless auto-approve is active."""
+    """Create user confirmation prompt handler with 1/2/3 and arrow-key selection."""
     if auto_approve:
         return None
 
+    session_state = {"always_allow": False}
+
     def confirm(action: str, details: str) -> bool:
+        if session_state["always_allow"]:
+            return True
+
         if action == "edit_file":
             title = "[yellow]Confirm File Edit (Unified Diff)[/]"
             border_style = "yellow"
+            options = [
+                "1. Yes, apply this edit",
+                "2. No, reject this edit",
+                "3. Always allow edits for this session",
+            ]
         elif action == "write_file":
             title = "[yellow]Confirm File Write (Preview)[/]"
             border_style = "yellow"
+            options = [
+                "1. Yes, write this file",
+                "2. No, cancel file write",
+                "3. Always allow writes for this session",
+            ]
         elif action == "run_bash":
             title = "[red]Confirm Shell Execution[/]"
             border_style = "red"
+            options = [
+                "1. Yes, run this command",
+                "2. No, skip this command",
+                "3. Always allow commands for this session",
+            ]
         else:
             title = f"[yellow]Confirm Action: {action}[/]"
             border_style = "yellow"
+            options = [
+                f"1. Yes, execute {action}",
+                f"2. No, cancel {action}",
+                f"3. Always allow for this session",
+            ]
 
         console.print(Panel(details, title=title, border_style=border_style))
-        return Confirm.ask(
-            f"[bold]Approve execution of [cyan]{action}[/]?[/]",
-            default=True,
-        )
+        selection = prompt_action_confirmation(action, options)
+
+        if selection == 2:
+            session_state["always_allow"] = True
+            console.print("[green]✓ Auto-approve enabled for the rest of this session.[/]\n")
+            return True
+        elif selection == 0:
+            return True
+        else:
+            console.print(f"[yellow]Cancelled {action}.[/]\n")
+            return False
 
     return confirm
 

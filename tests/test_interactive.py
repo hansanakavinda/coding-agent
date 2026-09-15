@@ -159,3 +159,72 @@ def test_create_prompt_session_non_tty() -> None:
         session = create_prompt_session()
         assert session is None
 
+
+def test_make_confirmation_callback_auto_approve_returns_none() -> None:
+    """Auto-approve mode disables confirmation callback."""
+    from cli import make_confirmation_callback
+    assert make_confirmation_callback(auto_approve=True) is None
+
+
+def test_make_confirmation_callback_approve_option_1() -> None:
+    """Option 1 approves tool execution."""
+    from cli import make_confirmation_callback
+
+    cb = make_confirmation_callback(auto_approve=False)
+    assert cb is not None
+
+    with patch("cli.prompt_action_confirmation", return_value=0):
+        result = cb("run_bash", "$ pytest")
+        assert result is True
+
+
+def test_make_confirmation_callback_reject_option_2() -> None:
+    """Option 2 rejects tool execution."""
+    from cli import make_confirmation_callback
+
+    cb = make_confirmation_callback(auto_approve=False)
+    assert cb is not None
+
+    with patch("cli.prompt_action_confirmation", return_value=1):
+        result = cb("run_bash", "$ rm -rf /")
+        assert result is False
+
+
+def test_make_confirmation_callback_always_allow_option_3() -> None:
+    """Option 3 enables auto-approve for remainder of session without prompting again."""
+    from cli import make_confirmation_callback
+
+    cb = make_confirmation_callback(auto_approve=False)
+    assert cb is not None
+
+    # First execution: user selects Option 3 (Always allow)
+    with patch("cli.prompt_action_confirmation", return_value=2) as mock_prompt:
+        result1 = cb("run_bash", "$ git status")
+        assert result1 is True
+        assert mock_prompt.call_count == 1
+
+        # Second execution: should automatically return True without calling prompt
+        result2 = cb("run_bash", "$ git diff")
+        assert result2 is True
+        assert mock_prompt.call_count == 1  # Unchanged!
+
+
+def test_prompt_action_confirmation_non_tty() -> None:
+    """Verifies fallback to Prompt.ask in non-TTY environments."""
+    from cli import prompt_action_confirmation
+    import sys
+
+    options = ["1. Yes", "2. No", "3. Always"]
+    with patch.object(sys.stdin, "isatty", return_value=False), \
+         patch("rich.prompt.Prompt.ask", return_value="1"):
+        assert prompt_action_confirmation("run_bash", options) == 0
+
+    with patch.object(sys.stdin, "isatty", return_value=False), \
+         patch("rich.prompt.Prompt.ask", return_value="2"):
+        assert prompt_action_confirmation("run_bash", options) == 1
+
+    with patch.object(sys.stdin, "isatty", return_value=False), \
+         patch("rich.prompt.Prompt.ask", return_value="3"):
+        assert prompt_action_confirmation("run_bash", options) == 2
+
+

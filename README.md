@@ -180,11 +180,19 @@ Target a different workspace directory:
 free-agent -w C:\path\to\another\project "Find all TODO comments and summarize them"
 ```
 
-### 3. Auto-Approve Confirmations (`--yes` / `-y`)
-By default, destructive actions (`edit_file`, `write_file`, and `run_bash`) prompt for interactive confirmation. Pass `-y` to bypass prompts in scripts or automated pipelines:
-```bash
-free-agent -y "Run pytest and fix any failing unit tests"
+### 3. Interactive Safety Confirmations & Auto-Approval (`--yes` / `-y`)
+Destructive actions (`run_bash`, `edit_file`, and `write_file`) display interactive confirmation menus:
+```text
+Select an action for run_bash (Use ↑/↓ arrows or press 1-3, then Enter):
+  ❯ 1. Yes, run this command
+    2. No, skip this command
+    3. Always allow commands for this session
 ```
+- **1 (or Yes)**: Approve and execute the action.
+- **2 (or No)**: Skip/reject the action.
+- **3 (or Always)**: Enable auto-approval for the rest of the current session.
+- **Selection**: Press `1`, `2`, or `3` directly, or use <kbd>↑</kbd>/<kbd>↓</kbd> arrow keys and press <kbd>Enter</kbd>.
+- Pass `-y` / `--yes` when launching to auto-approve all actions upfront.
 
 ### 4. Session Persistence & Resumption
 Sessions are stored centrally under `~/.free-coding-agent/sessions/` mapped to each workspace path hash:
@@ -203,7 +211,7 @@ free-agent --resume <session_id>
 
 ## Running the Test Suite
 
-Free Coding Agent includes a comprehensive test suite (57 unit tests) covering all tools, security path jailing, ReAct fallback parsing, context truncation, rate-limit recovery, centralized session persistence, and interactive slash commands:
+Free Coding Agent includes a comprehensive test suite (66 unit tests) covering all tools, security path jailing, ReAct fallback parsing, context truncation, rate-limit recovery, centralized session persistence, interactive slash commands, and arrow-key confirmations:
 
 ```bash
 pytest -v
