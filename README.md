@@ -94,6 +94,17 @@ pip install typer rich httpx python-dotenv pytest
 python agent.py "Inspect pyproject.toml and summarize the project dependencies."
 ```
 
+### Resuming Previous Sessions
+List all saved sessions in the current workspace:
+```bash
+python agent.py --sessions
+```
+
+Resume an existing session to continue context across CLI commands:
+```bash
+python agent.py --resume <session_id> "Now create unit tests for the functions you just inspected"
+```
+
 ### Auto-Approve Edits & Commands
 By default, `edit_file`, `write_file`, and `run_bash` prompt for confirmation. Pass `--yes` or `-y` to auto-approve:
 ```bash
@@ -115,7 +126,7 @@ Run the complete test suite with `pytest`:
 ```bash
 pytest -v
 ```
-All 38 unit tests run deterministically with mocked responses and isolated temporary directories.
+All 46 unit tests run deterministically with mocked responses and isolated temporary directories.
 
 ---
 
@@ -142,6 +153,15 @@ All 38 unit tests run deterministically with mocked responses and isolated tempo
   - `write_file(path, content)`
   - `run_bash(command)` (with timeout and exit code preservation)
   - Interactive user confirmation diffs / previews & `--yes` flag
-- [ ] **Milestone 5: Context Management & Truncation Budget**
-- [ ] **Milestone 6: Session Persistence & Resumption**
-- [ ] **Milestone 7: CLI UX Polish & Streaming**
+- [x] **Milestone 5: Context Management & Truncation Budget**
+  - Accurate token counting via `tiktoken` with fallback heuristic
+  - Tool output truncation preserving head and tail with omission notices
+  - Atomic conversation pruning keeping system prompt and recent turns intact
+- [x] **Milestone 6: Session Persistence & Resumption**
+  - Automatic session checkpoints stored in `.agent_sessions/*.json`
+  - Session listing (`agent --sessions`)
+  - Seamless resumption across crashes or closed terminals (`agent --resume <session_id>`)
+- [x] **Milestone 7: CLI UX Polish & Diffs**
+  - Rich colored panels for tool invocations, results, thoughts, and answers
+  - Unified syntax diffs and preview modals for confirmations
+  - Real-time terminal output with UTF-8 encoding support on Windows

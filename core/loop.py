@@ -6,6 +6,8 @@ from typing import Any, Callable
 
 from core.fallback_parser import generate_prompted_tools_instruction, parse_prompted_tool_calls
 from core.types import AgentResult, AgentStep, ConfirmationCallback, ToolCall
+from memory.context import ContextManager
+from memory.session import SessionManager
 from providers.base import LLMProvider
 from tools import ToolRegistry, get_default_registry
 
@@ -32,6 +34,10 @@ class AgentLoop:
         on_step: Callable[[AgentStep], None] | None = None,
         confirmation_callback: ConfirmationCallback | None = None,
         enable_prompted_fallback: bool = True,
+        context_manager: ContextManager | None = None,
+        session_manager: SessionManager | None = None,
+        session_id: str | None = None,
+        initial_messages: list[dict[str, Any]] | None = None,
     ) -> None:
         self.provider = provider
         self.project_root = Path(project_root).resolve()
@@ -41,6 +47,10 @@ class AgentLoop:
         self.on_step = on_step
         self.confirmation_callback = confirmation_callback
         self.enable_prompted_fallback = enable_prompted_fallback
+        self.context_manager = context_manager or ContextManager()
+        self.session_manager = session_manager or SessionManager(self.project_root)
+        self.session_id = session_id or self.session_manager.generate_session_id()
+        self.initial_messages = initial_messages
 
     def run(self, task: str) -> AgentResult:
         """Execute the agent loop for a user-specified task."""
@@ -50,15 +60,31 @@ class AgentLoop:
         if self.enable_prompted_fallback:
             full_system_prompt += "\n\n" + generate_prompted_tools_instruction(tool_schemas)
 
-        messages: list[dict[str, Any]] = [
-            {"role": "system", "content": full_system_prompt},
-            {"role": "user", "content": task},
-        ]
+        if self.initial_messages:
+            messages: list[dict[str, Any]] = list(self.initial_messages)
+            messages.append({"role": "user", "content": task})
+        else:
+            messages = [
+                {"role": "system", "content": full_system_prompt},
+                {"role": "user", "content": task},
+            ]
+
         recorded_steps: list[AgentStep] = []
         iteration = 1
         malformed_retry_count = 0
 
+        # Save initial checkpoint
+        self.session_manager.save_session(
+            session_id=self.session_id,
+            task=task,
+            messages=messages,
+            iterations=0,
+        )
+
         while iteration <= self.max_iterations:
+            # Prune message history if exceeding token budget
+            messages = self.context_manager.prune_messages(messages)
+
             response = self.provider.complete(messages=messages, tools=tool_schemas)
 
             # Check if model emitted content
@@ -102,6 +128,14 @@ class AgentLoop:
                 if self.on_step:
                     self.on_step(final_step)
 
+                # Persist completed session state
+                self.session_manager.save_session(
+                    session_id=self.session_id,
+                    task=task,
+                    messages=messages,
+                    iterations=iteration,
+                )
+
                 return AgentResult(
                     final_response=final_answer,
                     messages=messages,
@@ -144,13 +178,17 @@ class AgentLoop:
                     confirmation_callback=self.confirmation_callback,
                 )
 
+                # Truncate large tool output to protect context window
+                raw_output = result.to_message_content()
+                truncated_output = self.context_manager.truncate_tool_output(raw_output)
+
                 result_step = AgentStep(
                     kind="tool_result",
                     payload={
                         "id": tc.id,
                         "name": tc.name,
                         "success": result.success,
-                        "output": result.output,
+                        "output": truncated_output,
                         "error": result.error,
                     },
                 )
@@ -162,9 +200,17 @@ class AgentLoop:
                     "role": "tool",
                     "tool_call_id": tc.id,
                     "name": tc.name,
-                    "content": result.to_message_content(),
+                    "content": truncated_output,
                 }
                 messages.append(tool_message)
+
+            # Persist checkpoint after each iteration turn
+            self.session_manager.save_session(
+                session_id=self.session_id,
+                task=task,
+                messages=messages,
+                iterations=iteration,
+            )
 
             iteration += 1
 

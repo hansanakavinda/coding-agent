@@ -20,10 +20,12 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
+from rich.table import Table
 import typer
 
 from core.loop import AgentLoop
 from core.types import AgentStep, ConfirmationCallback
+from memory.session import SessionManager
 from providers.openrouter import DEFAULT_CANDIDATE_MODELS, OpenRouterProvider
 from tools import get_default_registry
 
@@ -128,7 +130,13 @@ def make_confirmation_callback(auto_approve: bool) -> ConfirmationCallback | Non
     return confirm
 
 
-def execute_agent_task(task: str, project_root: Path, auto_approve: bool = False) -> None:
+def execute_agent_task(
+    task: str,
+    project_root: Path,
+    auto_approve: bool = False,
+    session_id: str | None = None,
+    initial_messages: list[dict] | None = None,
+) -> None:
     """Run the agent loop on a single user prompt."""
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
@@ -150,6 +158,8 @@ def execute_agent_task(task: str, project_root: Path, auto_approve: bool = False
     )
     registry = get_default_registry()
     confirm_cb = make_confirmation_callback(auto_approve)
+    sm = SessionManager(project_root)
+    active_session_id = session_id or sm.generate_session_id()
 
     loop = AgentLoop(
         provider=provider,
@@ -157,10 +167,14 @@ def execute_agent_task(task: str, project_root: Path, auto_approve: bool = False
         tools=registry,
         on_step=render_step,
         confirmation_callback=confirm_cb,
+        session_manager=sm,
+        session_id=active_session_id,
+        initial_messages=initial_messages,
     )
 
     console.print(f"[bold blue]Workspace Root:[/] {project_root}")
-    console.print(f"[bold blue]Task:[/] {task}\n")
+    console.print(f"[bold cyan]Session ID:[/]     {active_session_id}")
+    console.print(f"[bold blue]Task:[/]           {task}\n")
 
     try:
         loop.run(task)
@@ -199,10 +213,67 @@ def main(
             help="Automatically approve file edits, writes, and shell execution without confirmation.",
         ),
     ] = False,
+    resume: Annotated[
+        Optional[str],
+        typer.Option(
+            "--resume",
+            "-r",
+            help="Resume an existing session by its session ID.",
+        ),
+    ] = None,
+    sessions: Annotated[
+        bool,
+        typer.Option(
+            "--sessions",
+            "-s",
+            help="List all saved sessions and exit.",
+        ),
+    ] = False,
 ) -> None:
     """Autonomous CLI Coding Agent powered by OpenRouter."""
+    sm = SessionManager(workspace)
+
+    # Handle --sessions flag
+    if sessions:
+        all_sessions = sm.list_sessions()
+        if not all_sessions:
+            console.print("[yellow]No saved sessions found in workspace.[/]")
+            return
+
+        table = Table(title="Saved Agent Sessions", border_style="blue")
+        table.add_column("Session ID", style="cyan", no_wrap=True)
+        table.add_column("Last Updated", style="dim")
+        table.add_column("Messages", justify="right")
+        table.add_column("Original Task", style="green")
+
+        for s in all_sessions:
+            table.add_row(
+                s["session_id"],
+                s["updated_at"][:19].replace("T", " "),
+                str(s["message_count"]),
+                s["task"][:60] + ("..." if len(s["task"]) > 60 else ""),
+            )
+        console.print(table)
+        return
+
+    # Handle --resume flag
+    initial_messages = None
+    if resume:
+        loaded = sm.load_session(resume)
+        if not loaded:
+            console.print(f"[bold red]Session '{resume}' not found in {sm.storage_dir}[/]")
+            raise typer.Exit(code=1)
+        initial_messages = loaded.messages
+        console.print(f"[bold green]Resuming Session:[/] {loaded.session_id} (Prior task: '{loaded.task}')")
+
     if task:
-        execute_agent_task(task, workspace, auto_approve=yes)
+        execute_agent_task(
+            task,
+            workspace,
+            auto_approve=yes,
+            session_id=resume,
+            initial_messages=initial_messages,
+        )
         return
 
     # Interactive REPL mode
@@ -214,15 +285,26 @@ def main(
         )
     )
 
+    current_session_id = resume or sm.generate_session_id()
     while True:
         try:
-            user_input = Prompt.ask("\n[bold cyan]agent[/]")
+            user_input = Prompt.ask(f"\n[bold cyan]agent [{current_session_id}][/]")
             if not user_input or user_input.strip() == "":
                 continue
             if user_input.strip().lower() in ("exit", "quit", "q"):
                 console.print("[dim]Goodbye![/]")
                 break
-            execute_agent_task(user_input.strip(), workspace, auto_approve=yes)
+            execute_agent_task(
+                user_input.strip(),
+                workspace,
+                auto_approve=yes,
+                session_id=current_session_id,
+                initial_messages=initial_messages,
+            )
+            # Subsequent REPL turns reload the updated messages
+            reloaded = sm.load_session(current_session_id)
+            if reloaded:
+                initial_messages = reloaded.messages
         except (KeyboardInterrupt, EOFError):
             console.print("\n[dim]Interrupted. Exiting REPL...[/]")
             break

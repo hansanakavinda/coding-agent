@@ -45,3 +45,4 @@ htmlcov/
 # Project specific
 generated/
 sessions/
+.agent_sessions/
