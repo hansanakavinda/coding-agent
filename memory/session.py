@@ -31,12 +31,45 @@ class SessionData:
         )
 
 
-class SessionManager:
-    """Handles saving, loading, and listing session checkpoints in local JSON files."""
+import hashlib
 
-    def __init__(self, storage_dir: Path) -> None:
-        self.storage_dir = Path(storage_dir).resolve() / ".agent_sessions"
+DEFAULT_CENTRAL_SESSIONS_DIR = Path.home() / ".free-coding-agent" / "sessions"
+
+
+class SessionManager:
+    """Handles saving, loading, and listing session checkpoints in centralized storage.
+
+    Never stores session data in the user's project directory.
+    """
+
+    def __init__(
+        self,
+        project_root: Path,
+        base_sessions_dir: Path | None = None,
+    ) -> None:
+        self.project_root = Path(project_root).resolve()
+        base_dir = Path(base_sessions_dir) if base_sessions_dir else DEFAULT_CENTRAL_SESSIONS_DIR
+
+        # Compute a unique, collision-free slug based on project name and canonical path hash
+        norm_path = str(self.project_root).lower().replace("\\", "/")
+        path_hash = hashlib.sha256(norm_path.encode("utf-8")).hexdigest()[:12]
+        workspace_slug = f"{self.project_root.name}_{path_hash}"
+
+        self.storage_dir = base_dir / workspace_slug
         self.storage_dir.mkdir(parents=True, exist_ok=True)
+
+        # Store workspace info mapping for inspection
+        meta_file = self.storage_dir / "workspace.json"
+        if not meta_file.exists():
+            meta = {
+                "project_name": self.project_root.name,
+                "project_path": str(self.project_root),
+                "slug": workspace_slug,
+            }
+            try:
+                meta_file.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+            except Exception:
+                pass
 
     def generate_session_id(self) -> str:
         """Create a compact, timestamped session identifier."""
@@ -103,6 +136,8 @@ class SessionManager:
             return sessions
 
         for path in self.storage_dir.glob("*.json"):
+            if path.name == "workspace.json":
+                continue
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
                 sessions.append(

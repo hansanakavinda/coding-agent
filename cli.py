@@ -25,6 +25,7 @@ import typer
 
 from core.loop import AgentLoop
 from core.types import AgentStep, ConfirmationCallback
+from memory.config import ConfigManager
 from memory.session import SessionManager
 from providers.openrouter import DEFAULT_MODEL, OpenRouterProvider
 from tools import get_default_registry
@@ -130,6 +131,52 @@ def make_confirmation_callback(auto_approve: bool) -> ConfirmationCallback | Non
     return confirm
 
 
+def resolve_api_key(config_mgr: ConfigManager) -> str:
+    """Obtain OpenRouter API key from env, global config, or interactive prompt."""
+    api_key = config_mgr.get_api_key()
+    if api_key:
+        return api_key
+
+    console.print(
+        Panel(
+            "[bold cyan]Welcome to Free Coding Agent![/]\n\n"
+            "To get started, you need an OpenRouter API key (free tier available).\n"
+            "Get one at: [bold underline]https://openrouter.ai/keys[/]",
+            title="First-Run Setup",
+            border_style="cyan",
+        )
+    )
+    prompted_key = Prompt.ask("[bold green]Enter your OpenRouter API Key[/]", password=True)
+    if not prompted_key or not prompted_key.strip():
+        console.print("[bold red]An API key is required to use Free Coding Agent. Exiting.[/]")
+        raise typer.Exit(code=1)
+
+    clean_key = prompted_key.strip()
+    config_mgr.set_api_key(clean_key)
+    console.print("[green]✓ API key saved to ~/.free-coding-agent/config.json.[/]\n")
+    return clean_key
+
+
+def handle_rate_limit(current_key: str, config_mgr: ConfigManager) -> str | None:
+    """Prompt user for an alternative API key when daily limit or rate limit occurs."""
+    console.print(
+        Panel(
+            "[bold yellow]OpenRouter Rate or Daily Quota Limit Reached![/]\n\n"
+            "The current API key has exhausted its allocation or is rate-limited.\n"
+            "Enter an alternative OpenRouter key to continue immediately, or press Enter to stop.",
+            title="Quota Limit Reached",
+            border_style="yellow",
+        )
+    )
+    new_key = Prompt.ask("[bold yellow]Alternative OpenRouter API Key[/]", password=True)
+    if new_key and new_key.strip():
+        clean_key = new_key.strip()
+        config_mgr.set_api_key(clean_key)
+        console.print("[green]✓ Switched to new key and updated global config. Resuming turn...[/]\n")
+        return clean_key
+    return None
+
+
 def execute_agent_task(
     task: str,
     project_root: Path,
@@ -139,23 +186,17 @@ def execute_agent_task(
     model: str = DEFAULT_MODEL,
 ) -> None:
     """Run the agent loop on a single user prompt."""
-    api_key = os.getenv("OPENROUTER_API_KEY")
-    if not api_key:
-        console.print(
-            Panel(
-                "[bold red]OPENROUTER_API_KEY not found![/]\n\n"
-                "Please set it in your environment or in a [bold].env[/] file:\n"
-                "OPENROUTER_API_KEY=your_key_here",
-                title="Configuration Error",
-                border_style="red",
-            )
-        )
-        raise typer.Exit(code=1)
+    config_mgr = ConfigManager()
+    api_key = resolve_api_key(config_mgr)
+
+    def rate_limit_cb(curr: str) -> str | None:
+        return handle_rate_limit(curr, config_mgr)
 
     provider = OpenRouterProvider(
         api_key=api_key,
         model=model,
         on_fallback=handle_fallback,
+        on_rate_limit=rate_limit_cb,
     )
     registry = get_default_registry()
     confirm_cb = make_confirmation_callback(auto_approve)
@@ -247,7 +288,7 @@ def main(
     if sessions:
         all_sessions = sm.list_sessions()
         if not all_sessions:
-            console.print("[yellow]No saved sessions found in workspace.[/]")
+            console.print("[yellow]No saved sessions found for this workspace.[/]")
             return
 
         table = Table(title="Saved Agent Sessions", border_style="blue")

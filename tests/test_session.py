@@ -1,13 +1,17 @@
-"""Unit tests for SessionManager and conversation resumption."""
+"""Unit tests for SessionManager and centralized session storage."""
 
 from pathlib import Path
 
 from memory.session import SessionManager
 
 
-def test_session_creation_and_save(tmp_path: Path) -> None:
-    """Verifies that sessions are saved as JSON files in .agent_sessions."""
-    sm = SessionManager(tmp_path)
+def test_session_never_stored_in_workspace(tmp_path: Path) -> None:
+    """Verifies that no session files or directories are created inside the project root."""
+    workspace = tmp_path / "my_project"
+    workspace.mkdir()
+    central_dir = tmp_path / "central_sessions"
+
+    sm = SessionManager(project_root=workspace, base_sessions_dir=central_dir)
     session_id = sm.generate_session_id()
 
     messages = [
@@ -22,13 +26,22 @@ def test_session_creation_and_save(tmp_path: Path) -> None:
         iterations=1,
     )
 
+    # Central storage received the file
     assert filepath.exists()
-    assert filepath.name == f"{session_id}.json"
+    assert central_dir in filepath.parents
+
+    # Project workspace must have zero session files or folders
+    assert not (workspace / ".agent_sessions").exists()
+    assert list(workspace.iterdir()) == []
 
 
 def test_session_load(tmp_path: Path) -> None:
     """Verifies loading an existing session by ID."""
-    sm = SessionManager(tmp_path)
+    workspace = tmp_path / "project_a"
+    workspace.mkdir()
+    central_dir = tmp_path / "central_sessions"
+
+    sm = SessionManager(project_root=workspace, base_sessions_dir=central_dir)
     session_id = "test_sess_001"
 
     messages = [
@@ -54,7 +67,11 @@ def test_session_load(tmp_path: Path) -> None:
 
 def test_list_sessions(tmp_path: Path) -> None:
     """Verifies listing multiple sessions."""
-    sm = SessionManager(tmp_path)
+    workspace = tmp_path / "project_b"
+    workspace.mkdir()
+    central_dir = tmp_path / "central_sessions"
+
+    sm = SessionManager(project_root=workspace, base_sessions_dir=central_dir)
 
     sm.save_session("sess_a", "Task A", [], 1)
     sm.save_session("sess_b", "Task B", [], 2)

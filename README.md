@@ -1,18 +1,21 @@
-# CLI Coding Agent (OpenRouter Free Tier)
+# Free Coding Agent (`free-coding-agent`)
 
-An autonomous, framework-free CLI coding agent built from scratch in Python. It interfaces directly with OpenRouter's free-tier LLMs via OpenAI-compatible endpoints, orchestrating a local agentic loop to inspect, reason about, and modify code in your project workspace.
+An autonomous, framework-free CLI coding agent powered by OpenRouter's free-tier models. Designed to be installed globally and run inside any project repository without polluting the codebase with sessions or configuration files.
 
 ---
 
-## Key Architecture Principles
+## Highlights
 
-1. **Framework-Free by Design**: No LangChain, LlamaIndex, or AutoGen. The agentic loop, tool dispatch system, message history, and context management are crafted from scratch to provide deep mechanical visibility.
-2. **Resilient Free-Tier Routing**: Automatically attempts candidate free models in sequence, gracefully falling back if upstream rate limits (HTTP 429) or transient server issues occur.
-3. **ReAct Prompted Fallback with Retry**: Seamlessly supports models without native tool calling via structured ```json fenced blocks, strict schema validation, and automatic single-retry prompting on malformed outputs.
-4. **Strict Path Jailing**: Every tool execution is strictly sandboxed to the project directory boundary. Traversal attempts (e.g. `../../`) or external absolute paths are rejected with a loud `PathJailError`.
-5. **Exact Match File Editing**: `edit_file` enforces that the target string (`old_str`) matches exactly once in the file to avoid accidental or ambiguous modifications.
-6. **Safety & Confirmation Modals**: File writes, targeted string replacements, and shell commands require explicit user confirmation with interactive syntax-highlighted diffs or command previews unless run with `--yes` / `-y`.
-7. **Rich Terminal UX**: Powered by `rich` and `typer`, presenting formatted panels for model thoughts, tool calls, tool results, and the active serving model.
+1. **Zero Workspace Pollution**: Under no circumstances are sessions, history logs, or `.env` files written to your target workspace. All state is strictly centralized in `~/.free-coding-agent/`.
+2. **First-Class Free-Tier Support**: Preconfigured for the `openrouter/free` meta-router, routing automatically to top active free coding models with candidate fallback chains.
+3. **Interactive Setup & Daily Quota Recovery**:
+   - Prompts for your OpenRouter key with masked input on first run and saves it globally.
+   - Gracefully detects HTTP 429 rate limits or exhausted daily free quotas, prompting dynamically for an alternative free key so you never lose conversational context mid-task.
+4. **Framework-Free by Design**: Built from scratch without LangChain, LlamaIndex, or AutoGen. Every part of the agentic loop, tool dispatch, and prompt engineering is clean, readable, and fully auditable.
+5. **ReAct Prompted Fallback with Retry**: Works across models with or without native tool-calling capabilities using structured JSON blocks, validation schemas, and self-healing single-retry prompts.
+6. **Strict Path Jailing**: Every file read, write, edit, and search is sandboxed to the active workspace. Traversal attempts (e.g. `../../`) are blocked with a clear `PathJailError`.
+7. **Interactive Safety Modals**: Displays syntax-highlighted unified diffs before modifying files and previews shell commands before execution (pass `--yes` / `-y` to auto-approve).
+8. **Rich Terminal UX**: Formatted terminal output powered by `rich` and `typer`, detailing model thoughts, tool calls, execution outputs, and final responses.
 
 ---
 
@@ -22,8 +25,8 @@ An autonomous, framework-free CLI coding agent built from scratch in Python. It 
 coding agent/
 ├── core/
 │   ├── __init__.py
-│   ├── types.py            # Typed dataclasses: ToolCall, ToolResult, ProviderResponse, AgentStep, AgentResult
-│   ├── fallback_parser.py  # ReAct prompted fallback instructions, JSON block parser, and validator
+│   ├── types.py            # Dataclasses: ToolCall, ToolResult, ProviderResponse, AgentStep, AgentResult
+│   ├── fallback_parser.py  # ReAct fallback instructions, JSON block parser, and validator
 │   └── loop.py             # Framework-free agentic loop (turns, dispatch, retries, termination)
 ├── tools/
 │   ├── __init__.py         # Tool registry, schema generation, and dynamic execution dispatch
@@ -37,10 +40,16 @@ coding agent/
 ├── providers/
 │   ├── __init__.py
 │   ├── base.py             # LLMProvider abstract interface
-│   └── openrouter.py       # OpenRouter client with candidate fallback chain & prompted retry
+│   └── openrouter.py       # OpenRouter client with fallback chain, prompted retry, and rate-limit recovery
 ├── memory/
-│   └── __init__.py         # Context budget and session persistence (scaffolded)
+│   ├── __init__.py         # Module exports
+│   ├── config.py           # Centralized configuration manager (~/.free-coding-agent/config.json)
+│   ├── session.py          # Centralized session persistence (~/.free-coding-agent/sessions/)
+│   └── context.py          # Token budgeting, tool output truncation, and conversation pruning
 ├── tests/
+│   ├── test_config.py      # Global config management and environment variable precedence tests
+│   ├── test_session.py     # Centralized session isolation and zero-pollution tests
+│   ├── test_context.py     # Token estimation, truncation, and atomic pruning tests
 │   ├── test_path_jail.py   # Boundary security and directory traversal tests
 │   ├── test_read_file.py   # Line numbering and edge-case reading tests
 │   ├── test_list_directory.py # Directory listing & git exclusion tests
@@ -51,117 +60,154 @@ coding agent/
 │   ├── test_fallback_parser.py # Fenced JSON parsing & malformed syntax tests
 │   ├── test_prompted_loop.py   # Prompted fallback & retry-on-malformed-output tests
 │   └── test_loop.py        # Deterministic multi-turn agent loop test
-├── cli.py                  # Typer & Rich command-line entrypoint (single task & REPL)
-├── agent.py                # Convenient root entrypoint wrapper pointing to cli.py
-├── pyproject.toml          # Package metadata and CLI console script
-├── .env.example            # Environment configuration template
-└── README.md               # Documentation and guide
+├── cli.py                  # Typer & Rich CLI entrypoint with single-task and REPL modes
+├── agent.py                # Wrapper entrypoint pointing to cli.py
+├── pyproject.toml          # Package metadata and console scripts (free-agent, free-coding-agent)
+└── README.md               # Documentation and usage guide
 ```
 
 ---
 
-## Setup & Installation
+## Installation
 
-### 1. Requirements
-- Python 3.11+
-- An [OpenRouter](https://openrouter.ai/) account (free key)
+### Option 1: Global Install via `pipx` (Recommended)
 
-### 2. Configure Environment
-Create a `.env` file from the example:
+[`pipx`](https://pypa.github.io/pipx/) installs the CLI in an isolated environment while exposing the binary globally across your system:
+
 ```bash
-cp .env.example .env
-```
-Add your OpenRouter API key inside `.env`:
-```env
-OPENROUTER_API_KEY=sk-or-v1-...
+# From the repository root
+pipx install .
+
+# Or directly from GitHub (once published)
+pipx install git+https://github.com/your-username/free-coding-agent.git
 ```
 
-### 3. Install Dependencies
+Now you can invoke `free-agent` or `free-coding-agent` from any terminal or directory on your system.
+
+### Option 2: Standard Python Virtual Environment
+
 ```bash
+# Clone the repository
+git clone https://github.com/your-username/free-coding-agent.git
+cd free-coding-agent
+
+# Create and activate virtual environment
+python -m venv venv
+# On Windows:
+.\venv\Scripts\activate
+# On macOS/Linux:
+source venv/bin/activate
+
+# Install in editable mode
 pip install -e .
 ```
-Or install required packages manually:
-```bash
-pip install typer rich httpx python-dotenv pytest
-```
 
 ---
 
-## Usage
+## Configuration & API Keys
 
-### Single-Task Execution
-```bash
-python agent.py "Inspect pyproject.toml and summarize the project dependencies."
+Free Coding Agent uses OpenRouter to access free models. You do **not** need to manually create `.env` files in your projects.
+
+### Automatic First-Run Setup
+Simply run `free-agent`. If no key is found, the CLI will display a welcome panel and prompt for your OpenRouter key with secure masked input:
+```
+╭─ First-Run Setup ──────────────────────────────────────────╮
+│ Welcome to Free Coding Agent!                              │
+│                                                            │
+│ To get started, you need an OpenRouter API key.            │
+│ Get one at: https://openrouter.ai/keys                     │
+╰────────────────────────────────────────────────────────────╯
+Enter your OpenRouter API Key: ••••••••••••••••••••••••
+✓ API key saved to ~/.free-coding-agent/config.json.
 ```
 
-### Resuming Previous Sessions
-List all saved sessions in the current workspace:
-```bash
-python agent.py --sessions
+### Dynamic Quota Limit Recovery
+Free-tier keys are subject to daily request limits. If your active key hits a quota limit (HTTP 429), Free Coding Agent catches it gracefully:
+```
+╭─ Quota Limit Reached ──────────────────────────────────────╮
+│ OpenRouter Rate or Daily Quota Limit Reached!              │
+│ Enter an alternative OpenRouter key to continue            │
+│ immediately, or press Enter to stop.                       │
+╰────────────────────────────────────────────────────────────╯
+Alternative OpenRouter API Key: ••••••••••••••••••••••••
+✓ Switched to new key and updated global config. Resuming turn...
 ```
 
-Resume an existing session to continue context across CLI commands:
-```bash
-python agent.py --resume <session_id> "Now create unit tests for the functions you just inspected"
-```
-
-### Auto-Approve Edits & Commands
-By default, `edit_file`, `write_file`, and `run_bash` prompt for confirmation. Pass `--yes` or `-y` to auto-approve:
-```bash
-python agent.py --yes "Run pytest and summarize any test failures"
-```
-
-### Interactive REPL Mode
-Run `agent.py` or `cli.py` without arguments to launch an interactive REPL session:
-```bash
-python agent.py
-```
-Inside the REPL, type your instructions or `exit` / `quit` to leave.
+### Alternative Configuration Methods
+You can also provide your API key via:
+- **Environment Variable**: `export OPENROUTER_API_KEY="sk-or-v1-..."` (or `$env:OPENROUTER_API_KEY="..."` on PowerShell)
+- **Config File**: Edit `~/.free-coding-agent/config.json` manually:
+  ```json
+  {
+    "openrouter_api_key": "sk-or-v1-...",
+    "default_model": "openrouter/free"
+  }
+  ```
 
 ---
 
-## Running Tests
+## Usage Guide
 
-Run the complete test suite with `pytest`:
+You can run Free Coding Agent using any of the installed commands: `free-agent`, `free-coding-agent`, or `agent`.
+
+### 1. Single Task Execution
+Run the agent on a specific instruction in the current directory:
+```bash
+free-agent "Inspect pyproject.toml and summarize the project dependencies."
+```
+
+Target a different workspace directory:
+```bash
+free-agent -w C:\path\to\another\project "Find all TODO comments and summarize them"
+```
+
+### 2. Auto-Approve Confirmations (`--yes` / `-y`)
+By default, destructive actions (`edit_file`, `write_file`, and `run_bash`) prompt for interactive confirmation. Use `-y` to bypass prompts in scripts or automated pipelines:
+```bash
+free-agent -y "Run pytest and fix any failing unit tests"
+```
+
+### 3. Session Persistence & Resumption
+Sessions are stored centrally under `~/.free-coding-agent/sessions/` mapped to each workspace path hash:
+
+List saved sessions for the current workspace:
+```bash
+free-agent --sessions
+```
+
+Resume an existing session to preserve conversation history and context:
+```bash
+free-agent --resume <session_id> "Now refactor the function you just inspected"
+```
+
+### 4. Interactive REPL Mode
+Launch an interactive shell by running without a task prompt:
+```bash
+free-agent
+```
+Inside the REPL, enter your commands sequentially. The agent preserves conversational context across turns. Type `exit` or `quit` to end the session.
+
+---
+
+## Running the Test Suite
+
+Free Coding Agent includes a comprehensive test suite (49 unit tests) covering all tools, security path jailing, ReAct fallback parsing, context truncation, rate-limit recovery, and centralized session persistence:
+
 ```bash
 pytest -v
 ```
-All 46 unit tests run deterministically with mocked responses and isolated temporary directories.
+
+All tests execute deterministically in isolated temporary directories using mocked OpenRouter API responses.
 
 ---
 
-## Implementation Milestones
+## Milestones Completed
 
 - [x] **Milestone 1: Repository Scaffolding & Bare Agentic Loop**
-  - Framework-free loop with typed message history
-  - `read_file` tool with line numbers
-  - Path jailing boundary security (`safe_resolve_path`)
-  - OpenRouter client with multi-model fallback chain
-- [x] **Milestone 2: Model Provider Layer Refinements**
-  - Candidate model chain: `nvidia/nemotron-3-super-120b-a12b:free` -> `google/gemma-4-31b-it:free` -> `openrouter/free`
-  - Automatic detection and recovery from upstream HTTP 429 rate limits
-  - Logging of actual serving model in console output
-- [x] **Milestone 3: ReAct Prompted Tool-Calling Fallback**
-  - Fenced structured ```json block parsing
-  - Strict validator for `tool` and `args` schemas
-  - Retry-on-malformed-output with dynamic re-prompting
-- [x] **Milestone 4: Core Tool Set**
-  - `read_file(path)`
-  - `list_directory(path)`
-  - `grep(pattern, path)`
-  - `edit_file(path, old_str, new_str)` (exact-match, fails loudly on duplicates or missing)
-  - `write_file(path, content)`
-  - `run_bash(command)` (with timeout and exit code preservation)
-  - Interactive user confirmation diffs / previews & `--yes` flag
-- [x] **Milestone 5: Context Management & Truncation Budget**
-  - Accurate token counting via `tiktoken` with fallback heuristic
-  - Tool output truncation preserving head and tail with omission notices
-  - Atomic conversation pruning keeping system prompt and recent turns intact
-- [x] **Milestone 6: Session Persistence & Resumption**
-  - Automatic session checkpoints stored in `.agent_sessions/*.json`
-  - Session listing (`agent --sessions`)
-  - Seamless resumption across crashes or closed terminals (`agent --resume <session_id>`)
-- [x] **Milestone 7: CLI UX Polish & Diffs**
-  - Rich colored panels for tool invocations, results, thoughts, and answers
-  - Unified syntax diffs and preview modals for confirmations
-  - Real-time terminal output with UTF-8 encoding support on Windows
+- [x] **Milestone 2: Model Provider Layer Refinements (`openrouter/free`)**
+- [x] **Milestone 3: ReAct Prompted Tool-Calling Fallback & Single-Retry**
+- [x] **Milestone 4: Sandboxed Core Tools (`read_file`, `write_file`, `edit_file`, `list_dir`, `grep`, `run_bash`)**
+- [x] **Milestone 5: Token Budgeting & Head/Tail Tool Truncation**
+- [x] **Milestone 6: Centralized Zero-Pollution Session Persistence**
+- [x] **Milestone 7: Rich Interactive UX, Unified Diffs & REPL**
+- [x] **Milestone 8: Productization & Packaging (`pipx` / setuptools, `~/.free-coding-agent/config.json`, dynamic rate-limit prompts)**

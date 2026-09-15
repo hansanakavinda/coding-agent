@@ -3,10 +3,10 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "coding-agent"
+name = "free-coding-agent"
 version = "0.1.0"
-description = "A lightweight CLI coding agent built from scratch using OpenRouter free models."
-authors = [{ name = "AI Engineering Intern" }]
+description = "Autonomous CLI coding agent powered by OpenRouter free-tier models."
+authors = [{ name = "Free Coding Agent Team" }]
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -14,13 +14,22 @@ dependencies = [
     "rich>=13.0.0",
     "httpx>=0.27.0",
     "python-dotenv>=1.0.0",
+    "tiktoken>=0.7.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
-    "tiktoken>=0.7.0",
 ]
 
 [project.scripts]
+free-agent = "cli:app"
+free-coding-agent = "cli:app"
 agent = "cli:app"
+
+[tool.setuptools.packages.find]
+include = ["core*", "tools*", "providers*", "memory*"]
+exclude = ["legacy*", "generated*", "tests*"]
+
+[tool.setuptools]
+py-modules = ["cli", "agent"]

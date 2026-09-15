@@ -30,6 +30,7 @@ class OpenRouterProvider(LLMProvider):
         timeout: float = 60.0,
         on_fallback: Callable[[str, Exception | str], None] | None = None,
         model_native_tools: dict[str, bool] | None = None,
+        on_rate_limit: Callable[[str], str | None] | None = None,
     ) -> None:
         if not api_key:
             raise ValueError("OPENROUTER_API_KEY is required for OpenRouterProvider.")
@@ -42,6 +43,7 @@ class OpenRouterProvider(LLMProvider):
         self.timeout = timeout
         self.on_fallback = on_fallback
         self.model_native_tools = model_native_tools or {}
+        self.on_rate_limit = on_rate_limit
 
     def complete(
         self,
@@ -55,6 +57,19 @@ class OpenRouterProvider(LLMProvider):
             try:
                 return self._call_model(model, messages, tools)
             except Exception as exc:
+                err_str = str(exc).lower()
+                is_rate_limited = "429" in err_str or "limit" in err_str or "quota" in err_str or "credit" in err_str
+
+                # If rate-limited and a prompt callback is provided, request new key
+                if is_rate_limited and self.on_rate_limit:
+                    new_key = self.on_rate_limit(self.api_key)
+                    if new_key and new_key != self.api_key:
+                        self.api_key = new_key
+                        try:
+                            return self._call_model(model, messages, tools)
+                        except Exception as retry_exc:
+                            exc = retry_exc
+
                 err_msg = f"Model '{model}' failed: {exc}"
                 logger.warning(err_msg)
                 errors.append(err_msg)
