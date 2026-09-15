@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 import httpx
 
+from core.fallback_parser import parse_prompted_tool_calls
 from core.types import ProviderResponse, ToolCall
 from providers.base import LLMProvider
 
@@ -30,6 +31,7 @@ class OpenRouterProvider(LLMProvider):
         base_url: str = "https://openrouter.ai/api/v1",
         timeout: float = 60.0,
         on_fallback: Callable[[str, Exception | str], None] | None = None,
+        model_native_tools: dict[str, bool] | None = None,
     ) -> None:
         if not api_key:
             raise ValueError("OPENROUTER_API_KEY is required for OpenRouterProvider.")
@@ -38,6 +40,7 @@ class OpenRouterProvider(LLMProvider):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.on_fallback = on_fallback
+        self.model_native_tools = model_native_tools or {}
 
     def complete(
         self,
@@ -69,12 +72,13 @@ class OpenRouterProvider(LLMProvider):
         tools: list[dict[str, Any]] | None = None,
     ) -> ProviderResponse:
         """Call OpenRouter completions API for a specific model."""
+        allow_native = self.model_native_tools.get(model, True)
         payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
             "temperature": 0.0,
         }
-        if tools:
+        if tools and allow_native:
             payload["tools"] = tools
 
         headers = {
@@ -90,6 +94,18 @@ class OpenRouterProvider(LLMProvider):
                 headers=headers,
                 json=payload,
             )
+
+        # If model rejected native tools, retry without tools parameter (prompted mode)
+        if response.status_code in (400, 404) and "tool" in response.text.lower() and "tools" in payload:
+            logger.info(f"Model '{model}' does not support native tools. Retrying in prompted mode.")
+            self.model_native_tools[model] = False
+            del payload["tools"]
+            with httpx.Client(timeout=self.timeout) as client:
+                response = client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=headers,
+                    json=payload,
+                )
 
         if response.status_code != 200:
             raise RuntimeError(
@@ -130,6 +146,13 @@ class OpenRouterProvider(LLMProvider):
                 args = {}
 
             parsed_tool_calls.append(ToolCall(id=call_id, name=name, arguments=args))
+
+        # If no native tool calls were returned, check for ReAct fenced JSON blocks in content
+        if not parsed_tool_calls and content:
+            thought, prompted_calls, parse_error = parse_prompted_tool_calls(content)
+            if prompted_calls:
+                parsed_tool_calls = prompted_calls
+                content = thought or None
 
         model_used = data.get("model") or requested_model
         return ProviderResponse(
