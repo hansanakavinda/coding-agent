@@ -1,5 +1,12 @@
 # Free Coding Agent (`free-coding-agent`)
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Tests](https://github.com/hansanakavinda/coding-agent/actions/workflows/tests.yml/badge.svg)](https://github.com/hansanakavinda/coding-agent/actions/workflows/tests.yml)
+
+> [!NOTE]
+> **Active Development / Alpha**: Free Coding Agent is an open-source project under active development. Community contributions and feedback are very welcome! See [`docs/codebase_evaluation_and_bug_report.md`](docs/codebase_evaluation_and_bug_report.md) for the prioritized technical roadmap and known items.
+
 An autonomous, framework-free CLI coding agent powered by OpenRouter's free-tier models. Designed to be installed globally and run inside any project repository without polluting the codebase with sessions or configuration files.
 
 ---
@@ -78,8 +85,8 @@ coding agent/
 # From the repository root
 pipx install .
 
-# Or directly from GitHub (once published)
-pipx install git+https://github.com/your-username/free-coding-agent.git
+# Or directly from GitHub
+pipx install git+https://github.com/hansanakavinda/coding-agent.git
 ```
 
 Now you can invoke `free-agent` or `free-coding-agent` from any terminal or directory on your system.
@@ -88,8 +95,8 @@ Now you can invoke `free-agent` or `free-coding-agent` from any terminal or dire
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/free-coding-agent.git
-cd free-coding-agent
+git clone https://github.com/hansanakavinda/coding-agent.git
+cd coding-agent
 
 # Create and activate virtual environment
 python -m venv venv
@@ -255,4 +262,11 @@ All tests execute deterministically in isolated temporary directories using mock
 - [x] **Milestone 7: Rich Interactive UX, Unified Diffs & REPL**
 - [x] **Milestone 8: Productization & Packaging (`pipx` / setuptools, `~/.free-coding-agent/config.json`, dynamic rate-limit prompts)**
 - [x] **Milestone 9: Interactive Flow & Slash Commands (`/new-chat`, `/history`, `/model`, `/clear`, `/help`, `/exit`)**
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
+
 
