@@ -79,34 +79,84 @@ coding agent/
 
 ### Option 1: Global Install via `pipx` (Recommended)
 
-[`pipx`](https://pypa.github.io/pipx/) installs the CLI in an isolated environment while exposing the binary globally across your system:
+[`pipx`](https://pipx.pypa.io/) runs Python CLI tools in isolated environments while making them globally accessible across your entire system from any directory.
 
+#### Install directly from GitHub (No cloning required):
 ```bash
-# From the repository root
-pipx install .
-
-# Or directly from GitHub
 pipx install git+https://github.com/hansanakavinda/coding-agent.git
 ```
 
-Now you can invoke `free-agent` or `free-coding-agent` from any terminal or directory on your system.
+Now you can invoke `free-agent` or `agent` from any terminal or project directory:
+```bash
+free-agent
+```
 
-### Option 2: Standard Python Virtual Environment
+<details>
+<summary><b>Don't have <code>pipx</code> installed yet? Click here for quick setup</b></summary>
+
+Installing `pipx` takes less than a minute:
+
+- **Windows (PowerShell)**:
+  ```powershell
+  python -m pip install --user pipx
+  python -m pipx ensurepath
+  ```
+  *(or via Scoop: `scoop install pipx`)*
+
+- **macOS (Homebrew)**:
+  ```bash
+  brew install pipx
+  pipx ensurepath
+  ```
+
+- **Linux (Ubuntu / Debian)**:
+  ```bash
+  sudo apt update && sudo apt install pipx
+  pipx ensurepath
+  ```
+
+*After running `ensurepath`, close and reopen your terminal to apply the updated PATH.*
+</details>
+
+#### Useful `pipx` commands:
+- **Upgrade to latest version**: `pipx upgrade free-coding-agent`
+- **Uninstall**: `pipx uninstall free-coding-agent`
+
+---
+
+### Option 2: Direct Install via `pip` (No clone required)
+
+If you already have a virtual environment active or prefer standard `pip`:
 
 ```bash
-# Clone the repository
+pip install git+https://github.com/hansanakavinda/coding-agent.git
+```
+
+Then launch the agent:
+```bash
+free-agent
+```
+
+---
+
+### Option 3: Local Clone (For Development & Contributing)
+
+If you want to contribute, modify the code, or run the test suite locally:
+
+```bash
+# 1. Clone the repository
 git clone https://github.com/hansanakavinda/coding-agent.git
 cd coding-agent
 
-# Create and activate virtual environment
+# 2. Create and activate virtual environment
 python -m venv venv
-# On Windows:
+# Windows (PowerShell):
 .\venv\Scripts\activate
-# On macOS/Linux:
+# macOS/Linux:
 source venv/bin/activate
 
-# Install in editable mode
-pip install -e .
+# 3. Install in editable mode with development dependencies
+pip install -e ".[dev]"
 ```
 
 ---
