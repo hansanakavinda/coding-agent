@@ -148,15 +148,26 @@ You can also provide your API key via:
 
 ## Usage Guide
 
-You can run Free Coding Agent using any of the installed commands: `free-agent`, `free-coding-agent`, or `agent`.
+### Available CLI Commands & Aliases
+Once installed globally or in your virtual environment, you can use any of these commands:
+
+| Command | Usage | Description |
+| :--- | :--- | :--- |
+| **`agent`** | `agent [options] [task]` | Shortest, recommended alias for daily use |
+| **`free-agent`** | `free-agent [options] [task]` | Primary package CLI command |
+| **`free-coding-agent`** | `free-coding-agent [options] [task]` | Full package name command |
+| **`python agent.py`** | `python agent.py [options] [task]` | Root repository wrapper (development) |
+
+---
 
 ### 1. Interactive Conversational Mode (Default)
 Simply run `agent` or `free-agent` from any directory to start an interactive pair-programming session:
 ```bash
-free-agent
+agent
 ```
 
 Type your requests naturally and continue chatting. The agent preserves full context across turns.
+When typing `/`, an interactive suggestion menu appears with arrow-key navigation (<kbd>↑</kbd>/<kbd>↓</kbd> + <kbd>Enter</kbd>).
 
 #### Supported Slash Commands
 Within the interactive prompt, type `/` to access commands:
@@ -172,12 +183,17 @@ Within the interactive prompt, type `/` to access commands:
 ### 2. Single Task Execution
 Execute a one-off task instruction directly from the command line:
 ```bash
-free-agent "Inspect pyproject.toml and summarize the project dependencies."
+agent "Inspect pyproject.toml and summarize the project dependencies."
 ```
 
 Target a different workspace directory:
 ```bash
-free-agent -w C:\path\to\another\project "Find all TODO comments and summarize them"
+agent -w C:\path\to\another\project "Find all TODO comments and summarize them"
+```
+
+Override the default model (`openrouter/free`):
+```bash
+agent -m "meta-llama/llama-3.3-70b-instruct:free" "Summarize key entrypoints"
 ```
 
 ### 3. Interactive Safety Confirmations & Auto-Approval (`--yes` / `-y`)
@@ -192,19 +208,26 @@ Select an action for run_bash (Use ↑/↓ arrows or press 1-3, then Enter):
 - **2 (or No)**: Skip/reject the action.
 - **3 (or Always)**: Enable auto-approval for the rest of the current session.
 - **Selection**: Press `1`, `2`, or `3` directly, or use <kbd>↑</kbd>/<kbd>↓</kbd> arrow keys and press <kbd>Enter</kbd>.
-- Pass `-y` / `--yes` when launching to auto-approve all actions upfront.
+- Pass `-y` / `--yes` when launching to auto-approve all actions upfront:
+  ```bash
+  agent -y
+  ```
 
 ### 4. Session Persistence & Resumption
 Sessions are stored centrally under `~/.free-coding-agent/sessions/` mapped to each workspace path hash:
 
 List saved sessions from the CLI:
 ```bash
-free-agent --sessions
+agent --sessions
+# or
+agent -s
 ```
 
 Resume an existing session directly:
 ```bash
-free-agent --resume <session_id>
+agent --resume <session_id>
+# or
+agent -r <session_id>
 ```
 
 ---
