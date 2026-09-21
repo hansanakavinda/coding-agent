@@ -114,12 +114,14 @@ def test_slash_command_completer_all_suggestions() -> None:
 
     cmd_names = [c.text for c in completions]
     assert "/new-chat" in cmd_names
+    assert "/key" in cmd_names
+    assert "/api-key" in cmd_names
     assert "/history" in cmd_names
     assert "/model" in cmd_names
     assert "/clear" in cmd_names
     assert "/help" in cmd_names
     assert "/exit" in cmd_names
-    assert len(completions) == 6
+    assert len(completions) == 8
 
 
 def test_slash_command_completer_prefix_filtering() -> None:
@@ -252,5 +254,76 @@ def test_status_manager_lifecycle() -> None:
     # Repeated stops are safe and idempotent
     sm.stop()
     assert not sm.is_active()
+
+
+def test_handle_key_update_direct_valid(tmp_path: Path, monkeypatch) -> None:
+    """Verifies updating key via slash command with direct argument."""
+    from cli import handle_key_update
+    from memory.config import ConfigManager
+
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    cm = ConfigManager(config_dir=tmp_path)
+    res = handle_key_update(cm, direct_key="sk-or-v1-newsecret123")
+    assert res == "sk-or-v1-newsecret123"
+    assert cm.get_api_key() == "sk-or-v1-newsecret123"
+
+
+def test_handle_key_update_direct_invalid(tmp_path: Path, monkeypatch) -> None:
+    """Verifies invalid direct key is rejected and existing key is preserved."""
+    from cli import handle_key_update
+    from memory.config import ConfigManager
+
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    cm = ConfigManager(config_dir=tmp_path)
+    cm.set_api_key("sk-or-v1-initialkey")
+
+    res = handle_key_update(cm, direct_key="\x1b")
+    assert res == "sk-or-v1-initialkey"
+    assert cm.get_api_key() == "sk-or-v1-initialkey"
+
+
+def test_handle_key_update_prompted_valid(tmp_path: Path, monkeypatch) -> None:
+    """Verifies prompted key update when user inputs valid key."""
+    from cli import handle_key_update
+    from memory.config import ConfigManager
+
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    cm = ConfigManager(config_dir=tmp_path)
+
+    with patch("rich.prompt.Prompt.ask", return_value="sk-or-v1-promptedkey"):
+        res = handle_key_update(cm)
+        assert res == "sk-or-v1-promptedkey"
+        assert cm.get_api_key() == "sk-or-v1-promptedkey"
+
+
+def test_handle_key_update_prompted_cancel_on_empty(tmp_path: Path, monkeypatch) -> None:
+    """Verifies prompt cancellation keeps existing key when entering empty string."""
+    from cli import handle_key_update
+    from memory.config import ConfigManager
+
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    cm = ConfigManager(config_dir=tmp_path)
+    cm.set_api_key("sk-or-v1-existing")
+
+    with patch("rich.prompt.Prompt.ask", return_value=""):
+        res = handle_key_update(cm)
+        assert res == "sk-or-v1-existing"
+        assert cm.get_api_key() == "sk-or-v1-existing"
+
+
+def test_handle_key_update_prompted_rejects_escape(tmp_path: Path, monkeypatch) -> None:
+    """Verifies prompt rejects escape character without corrupting config."""
+    from cli import handle_key_update
+    from memory.config import ConfigManager
+
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    cm = ConfigManager(config_dir=tmp_path)
+    cm.set_api_key("sk-or-v1-existing")
+
+    with patch("rich.prompt.Prompt.ask", return_value="\x1b"):
+        res = handle_key_update(cm)
+        assert res == "sk-or-v1-existing"
+        assert cm.get_api_key() == "sk-or-v1-existing"
+
 
 

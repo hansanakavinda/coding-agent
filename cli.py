@@ -36,7 +36,7 @@ import typer
 
 from core.loop import AgentLoop
 from core.types import AgentStep, ConfirmationCallback
-from memory.config import ConfigManager
+from memory.config import ConfigManager, is_valid_api_key
 from memory.session import SessionManager
 from providers.openrouter import DEFAULT_MODEL, OpenRouterProvider
 from tools import get_default_registry
@@ -315,11 +315,11 @@ def resolve_api_key(config_mgr: ConfigManager) -> str:
         )
     )
     prompted_key = Prompt.ask("[bold green]Enter your OpenRouter API Key[/]", password=True)
-    if not prompted_key or not prompted_key.strip():
-        console.print("[bold red]An API key is required to use Free Coding Agent. Exiting.[/]")
+    clean_key = prompted_key.strip() if prompted_key else ""
+    if not is_valid_api_key(clean_key):
+        console.print("[bold red]A valid API key is required to use Free Coding Agent. Exiting.[/]")
         raise typer.Exit(code=1)
 
-    clean_key = prompted_key.strip()
     config_mgr.set_api_key(clean_key)
     console.print("[green]✓ API key saved to ~/.free-coding-agent/config.json.[/]\n")
     return clean_key
@@ -337,12 +337,47 @@ def handle_rate_limit(current_key: str, config_mgr: ConfigManager) -> str | None
         )
     )
     new_key = Prompt.ask("[bold yellow]Alternative OpenRouter API Key[/]", password=True)
-    if new_key and new_key.strip():
+    if new_key:
         clean_key = new_key.strip()
-        config_mgr.set_api_key(clean_key)
-        console.print("[green]✓ Switched to new key and updated global config. Resuming turn...[/]\n")
-        return clean_key
+        if is_valid_api_key(clean_key):
+            config_mgr.set_api_key(clean_key)
+            console.print("[green]✓ Switched to new key and updated global config. Resuming turn...[/]\n")
+            return clean_key
+        else:
+            console.print("[yellow]Invalid API key entered (control characters or too short). Key not saved.[/]\n")
     return None
+
+
+def handle_key_update(config_mgr: ConfigManager, direct_key: str | None = None) -> str | None:
+    """View or update the active OpenRouter API key via slash command."""
+    current_key = config_mgr.get_api_key()
+
+    if direct_key:
+        candidate_key = direct_key.strip()
+    else:
+        if current_key:
+            masked = current_key[:8] + "..." + current_key[-4:] if len(current_key) > 12 else "***"
+            console.print(f"Active API Key: [bold cyan]{masked}[/]")
+        else:
+            console.print("[yellow]No valid API key currently configured.[/]")
+
+        entered = Prompt.ask(
+            "[bold green]Enter new OpenRouter API Key (or press Enter to cancel)[/]",
+            password=True,
+        )
+        if not entered or not entered.strip():
+            console.print("[dim]Key update cancelled. Active key unchanged.[/]\n")
+            return current_key
+        candidate_key = entered.strip()
+
+    if not is_valid_api_key(candidate_key):
+        console.print("[bold red]Invalid API key format (must be printable text, min 8 chars). Key not updated.[/]\n")
+        return current_key
+
+    config_mgr.set_api_key(candidate_key)
+    masked_new = candidate_key[:8] + "..." + candidate_key[-4:] if len(candidate_key) > 12 else "***"
+    console.print(f"[bold green]✓ API key updated successfully:[/] [cyan]{masked_new}[/]\n")
+    return candidate_key
 
 
 def execute_agent_task(
@@ -421,7 +456,7 @@ def display_welcome_banner(workspace: Path, model: str, session_id: str) -> None
         f"[dim]Workspace:[/] [blue]{workspace}[/]\n"
         f"[dim]Session:[/]   [cyan]{session_id}[/]\n\n"
         f"Type your task or instruction to begin.\n"
-        f"Commands: [cyan]/new-chat[/], [cyan]/history[/], [cyan]/model[/], [cyan]/clear[/], [cyan]/help[/], [cyan]/exit[/]"
+        f"Commands: [cyan]/new-chat[/], [cyan]/key[/], [cyan]/history[/], [cyan]/model[/], [cyan]/clear[/], [cyan]/help[/], [cyan]/exit[/]"
     )
     console.print(Panel(welcome_text, border_style="bright_blue", padding=(1, 2)))
 
@@ -432,6 +467,7 @@ def display_slash_help() -> None:
     table.add_column("Command", style="bold cyan", no_wrap=True)
     table.add_column("Description", style="white")
     table.add_row("/new-chat, /new", "Start a brand new conversation with clean context")
+    table.add_row("/key, /api-key", "View or update your OpenRouter API key")
     table.add_row("/history, /sessions", "List past conversation sessions and resume one")
     table.add_row("/model", "View or change the active LLM identifier")
     table.add_row("/clear", "Clear terminal screen while keeping conversation context")
@@ -511,6 +547,8 @@ def handle_model_switch(current_model: str) -> str:
 
 SLASH_COMMAND_SUGGESTIONS: list[tuple[str, str]] = [
     ("/new-chat", "Start a brand new conversation with fresh context"),
+    ("/key", "View or update your OpenRouter API key"),
+    ("/api-key", "View or update your OpenRouter API key"),
     ("/history", "View and resume previous chat sessions"),
     ("/model", "View or change the active LLM identifier"),
     ("/clear", "Clear terminal screen while keeping context"),
@@ -637,7 +675,10 @@ def run_interactive_session(
 
             # Process slash commands
             if user_input.startswith("/"):
-                cmd = user_input.lower().split()[0]
+                parts = user_input.split(maxsplit=1)
+                cmd = parts[0].lower()
+                arg = parts[1].strip() if len(parts) > 1 else None
+
                 if cmd in ("/exit", "/quit"):
                     console.print("[dim]Goodbye![/]")
                     break
@@ -648,6 +689,9 @@ def run_interactive_session(
                     current_session_id = sm.generate_session_id()
                     messages = None
                     console.print(f"[bold green]✓ Started new chat session:[/] [cyan]{current_session_id}[/]")
+                    continue
+                elif cmd in ("/key", "/api-key", "/apikey", "/set-key"):
+                    handle_key_update(config_mgr, direct_key=arg)
                     continue
                 elif cmd in ("/history", "/sessions"):
                     history_res = prompt_select_history(sm)

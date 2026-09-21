@@ -11,6 +11,19 @@ CONFIG_FILE = DEFAULT_CONFIG_DIR / "config.json"
 DEFAULT_MODEL = "openrouter/free"
 
 
+def is_valid_api_key(key: str | None) -> bool:
+    """Validate that an API key is a non-empty string without illegal control characters."""
+    if not key or not isinstance(key, str):
+        return False
+    stripped = key.strip()
+    # Keys should have reasonable minimum length and no control codes (e.g. \x1b, \x00)
+    if len(stripped) < 8:
+        return False
+    if not stripped.isprintable() or any(ord(c) < 32 or ord(c) > 126 for c in stripped):
+        return False
+    return True
+
+
 class ConfigManager:
     """Manages global user configuration in ~/.free-coding-agent/config.json."""
 
@@ -55,20 +68,28 @@ class ConfigManager:
         2. Global configuration file (~/.free-coding-agent/config.json).
         """
         env_key = os.environ.get("OPENROUTER_API_KEY")
-        if env_key and env_key.strip():
+        if env_key and is_valid_api_key(env_key):
             return env_key.strip()
 
         data = self.load()
         file_key = data.get("openrouter_api_key")
-        if file_key and str(file_key).strip():
+        if file_key and is_valid_api_key(str(file_key)):
             return str(file_key).strip()
 
         return None
 
     def set_api_key(self, api_key: str) -> None:
         """Persist API key to the global configuration file."""
+        if not is_valid_api_key(api_key):
+            raise ValueError("Invalid API key provided: must be printable ASCII text of at least 8 characters.")
         data = self.load()
         data["openrouter_api_key"] = api_key.strip()
+        self.save(data)
+
+    def clear_api_key(self) -> None:
+        """Remove saved API key from global configuration."""
+        data = self.load()
+        data.pop("openrouter_api_key", None)
         self.save(data)
 
     def get_default_model(self) -> str:

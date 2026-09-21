@@ -59,9 +59,17 @@ class OpenRouterProvider(LLMProvider):
             except Exception as exc:
                 err_str = str(exc).lower()
                 is_rate_limited = "429" in err_str or "limit" in err_str or "quota" in err_str or "credit" in err_str
+                is_auth_error = (
+                    "401" in err_str
+                    or "unauthorized" in err_str
+                    or ("http 400:" in err_str and not err_str.strip().endswith("}"))
+                    or "invalid api key" in err_str
+                    or "user has exceeded" in err_str
+                    or "no endpoints found" in err_str
+                )
 
-                # If rate-limited and a prompt callback is provided, request new key
-                if is_rate_limited and self.on_rate_limit:
+                # If rate-limited or auth/key error and a prompt callback is provided, request new key
+                if (is_rate_limited or is_auth_error) and self.on_rate_limit:
                     new_key = self.on_rate_limit(self.api_key)
                     if new_key and new_key != self.api_key:
                         self.api_key = new_key

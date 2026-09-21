@@ -239,6 +239,7 @@ Within the interactive prompt, type `/` to access commands:
 | Command | Description |
 | :--- | :--- |
 | `/new-chat`, `/new` | Start a brand new conversation with fresh context |
+| `/key`, `/api-key` | View or update your OpenRouter API key anytime |
 | `/history`, `/sessions` | View past sessions for this workspace and select one to resume |
 | `/model` | View or change the active LLM identifier |
 | `/clear` | Clear terminal screen while preserving context |
