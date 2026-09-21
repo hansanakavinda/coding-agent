@@ -4,8 +4,11 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://github.com/hansanakavinda/coding-agent/actions/workflows/tests.yml/badge.svg)](https://github.com/hansanakavinda/coding-agent/actions/workflows/tests.yml)
 
-> [!NOTE]
-> **Active Development / Alpha**: Free Coding Agent is an open-source project under active development. Community contributions and feedback are very welcome! See [`docs/codebase_evaluation_and_bug_report.md`](docs/codebase_evaluation_and_bug_report.md) for the prioritized technical roadmap and known items.
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="Free Coding Agent Demo" width="800">
+</p>
+
+> **Why I built it**: Most AI coding assistants either require expensive subscriptions, force heavy orchestration frameworks (like LangChain or LlamaIndex), or litter user workspaces with session files, logs, and config artifacts. I built **Free Coding Agent** from first principles to provide a clean, production-grade autonomous CLI assistant that runs entirely on free-tier models, keeps all state strictly centralized so your repositories stay pristine, and handles real-world agent engineering challenges (ReAct fallbacks, path traversal security, context token limits, and rate-limit recovery) reliably.
 
 An autonomous, framework-free CLI coding agent powered by OpenRouter's free-tier models. Designed to be installed globally and run inside any project repository without polluting the codebase with sessions or configuration files.
 
@@ -66,7 +69,13 @@ coding agent/
 │   ├── test_run_bash.py    # Shell execution, timeout, and status code tests
 │   ├── test_fallback_parser.py # Fenced JSON parsing & malformed syntax tests
 │   ├── test_prompted_loop.py   # Prompted fallback & retry-on-malformed-output tests
+│   ├── test_interactive.py # Interactive slash commands, arrow-key confirmations, and non-TTY tests
 │   └── test_loop.py        # Deterministic multi-turn agent loop test
+├── docs/
+│   ├── assets/
+│   │   ├── demo.gif        # Animated terminal demo recording
+│   │   └── demo.tape       # VHS recording recipe script
+│   └── codebase_evaluation_and_bug_report.md
 ├── cli.py                  # Typer & Rich CLI entrypoint with single-task and REPL modes
 ├── agent.py                # Wrapper entrypoint pointing to cli.py
 ├── pyproject.toml          # Package metadata and console scripts (free-agent, free-coding-agent)
