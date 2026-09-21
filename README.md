@@ -78,7 +78,7 @@ coding agent/
 │   └── codebase_evaluation_and_bug_report.md
 ├── cli.py                  # Typer & Rich CLI entrypoint with single-task and REPL modes
 ├── agent.py                # Wrapper entrypoint pointing to cli.py
-├── pyproject.toml          # Package metadata and console scripts (free-agent, free-coding-agent)
+├── pyproject.toml          # Package metadata and console script (agent)
 └── README.md               # Documentation and usage guide
 ```
 
@@ -95,9 +95,9 @@ coding agent/
 pipx install git+https://github.com/hansanakavinda/coding-agent.git
 ```
 
-Now you can invoke `free-agent` or `agent` from any terminal or project directory:
+Now you can invoke `agent` from any terminal or project directory:
 ```bash
-free-agent
+agent
 ```
 
 <details>
@@ -143,7 +143,7 @@ pip install git+https://github.com/hansanakavinda/coding-agent.git
 
 Then launch the agent:
 ```bash
-free-agent
+agent
 ```
 
 ---
@@ -175,7 +175,7 @@ pip install -e ".[dev]"
 Free Coding Agent uses OpenRouter to access free models. You do **not** need to manually create `.env` files in your projects.
 
 ### Automatic First-Run Setup
-Simply run `free-agent`. If no key is found, the CLI will display a welcome panel and prompt for your OpenRouter key with secure masked input:
+Simply run `agent`. If no key is found, the CLI will display a welcome panel and prompt for your OpenRouter key with secure masked input:
 ```
 ╭─ First-Run Setup ──────────────────────────────────────────╮
 │ Welcome to Free Coding Agent!                              │
@@ -214,20 +214,19 @@ You can also provide your API key via:
 
 ## Usage Guide
 
-### Available CLI Commands & Aliases
-Once installed globally or in your virtual environment, you can use any of these commands:
+### Single Unified CLI Command
+Once installed, you only ever need to remember one command:
 
-| Command | Usage | Description |
-| :--- | :--- | :--- |
-| **`agent`** | `agent [options] [task]` | Shortest, recommended alias for daily use |
-| **`free-agent`** | `free-agent [options] [task]` | Primary package CLI command |
-| **`free-coding-agent`** | `free-coding-agent [options] [task]` | Full package name command |
-| **`python agent.py`** | `python agent.py [options] [task]` | Root repository wrapper (development) |
+```bash
+agent [options] [task]
+```
+
+*(When developing locally from the cloned repository, `python agent.py` is also available as a wrapper).*
 
 ---
 
 ### 1. Interactive Conversational Mode (Default)
-Simply run `agent` or `free-agent` from any directory to start an interactive pair-programming session:
+Simply run `agent` from any directory to start an interactive pair-programming session:
 ```bash
 agent
 ```

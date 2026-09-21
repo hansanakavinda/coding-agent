@@ -31,8 +31,6 @@ dev = [
 ]
 
 [project.scripts]
-free-agent = "cli:app"
-free-coding-agent = "cli:app"
 agent = "cli:app"
 
 [tool.setuptools.packages.find]

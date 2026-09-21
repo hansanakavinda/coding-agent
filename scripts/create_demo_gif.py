@@ -207,12 +207,12 @@ def create_demo_gif(output_path: Path) -> None:
     # Storyboard:
     # Frame 1: Terminal prompt
     f1 = make_base_window()
-    render_text(f1, 30, 50, "$ free-agent", 3, scale=2)
+    render_text(f1, 30, 50, "$ agent", 3, scale=2)
     frames.append((f1, 150))
 
     # Frame 2: Welcome banner & prompt
     f2 = make_base_window()
-    render_text(f2, 30, 50, "$ free-agent", 3, scale=2)
+    render_text(f2, 30, 50, "$ agent", 3, scale=2)
     render_text(f2, 30, 85, "[Free Coding Agent v0.1.0]", 4, scale=2)
     render_text(f2, 30, 115, "Model: openrouter/free (auto-routed)", 5, scale=2)
     render_text(f2, 30, 145, "Workspace: ./my_project (state isolated)", 6, scale=2)

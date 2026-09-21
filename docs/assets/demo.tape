@@ -4,7 +4,7 @@
 
 Output docs/assets/demo.gif
 
-Require free-agent
+Require agent
 
 Set Shell "bash"
 Set FontSize 15
@@ -14,7 +14,7 @@ Set Theme "Catppuccin Mocha"
 Set Padding 20
 Set WindowBar Colorful
 
-Type "free-agent"
+Type "agent"
 Sleep 500ms
 Enter
 
