@@ -51,6 +51,38 @@ app = typer.Typer(
 console = Console(highlight=False)
 
 
+class StatusManager:
+    """Manages animated terminal status and spinner for background agent processing."""
+
+    def __init__(self, console: Console) -> None:
+        self.console = console
+        self._status = None
+
+    def update(self, message: str | None) -> None:
+        """Show, update, or stop the status indicator."""
+        if message:
+            if self._status is None:
+                self._status = self.console.status(f"[bold cyan]{message}[/]", spinner="dots")
+                self._status.start()
+            else:
+                self._status.update(f"[bold cyan]{message}[/]")
+        else:
+            self.stop()
+
+    def stop(self) -> None:
+        """Safely stop and clear the active status indicator."""
+        if self._status is not None:
+            try:
+                self._status.stop()
+            except Exception:
+                pass
+            self._status = None
+
+    def is_active(self) -> bool:
+        """Check whether a status spinner is currently active."""
+        return self._status is not None
+
+
 def render_step(step: AgentStep) -> None:
     """Format and display agent steps with rich styling."""
     if step.kind == "thought":
@@ -325,9 +357,17 @@ def execute_agent_task(
     """Run the agent loop on a single user prompt."""
     config_mgr = ConfigManager()
     api_key = resolve_api_key(config_mgr)
+    status_manager = StatusManager(console)
 
     def rate_limit_cb(curr: str) -> str | None:
-        return handle_rate_limit(curr, config_mgr)
+        was_active = status_manager.is_active()
+        if was_active:
+            status_manager.stop()
+        try:
+            return handle_rate_limit(curr, config_mgr)
+        finally:
+            if was_active:
+                status_manager.update("Thinking...")
 
     provider = OpenRouterProvider(
         api_key=api_key,
@@ -345,6 +385,7 @@ def execute_agent_task(
         project_root=project_root,
         tools=registry,
         on_step=render_step,
+        on_status=status_manager.update,
         confirmation_callback=confirm_cb,
         session_manager=sm,
         session_id=active_session_id,
@@ -369,6 +410,8 @@ def execute_agent_task(
         )
         if not quiet_header:
             raise typer.Exit(code=1) from err
+    finally:
+        status_manager.stop()
 
 
 def display_welcome_banner(workspace: Path, model: str, session_id: str) -> None:

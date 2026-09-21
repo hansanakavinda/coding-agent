@@ -6,6 +6,9 @@ from typing import Any, Callable
 # Callback type signature: confirm(action_name: str, preview_or_diff: str) -> bool
 ConfirmationCallback = Callable[[str, str], bool]
 
+# Status callback type signature: update_status(message: str | None) -> None
+StatusCallback = Callable[[str | None], None]
+
 
 @dataclass
 class ToolCall:

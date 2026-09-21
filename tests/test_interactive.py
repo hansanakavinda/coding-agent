@@ -228,3 +228,29 @@ def test_prompt_action_confirmation_non_tty() -> None:
         assert prompt_action_confirmation("run_bash", options) == 2
 
 
+def test_status_manager_lifecycle() -> None:
+    """Verifies StatusManager starts, updates, and stops properly."""
+    from rich.console import Console
+    from cli import StatusManager
+
+    console = Console(force_terminal=False)
+    sm = StatusManager(console)
+    assert not sm.is_active()
+
+    # Start spinner
+    sm.update("Thinking...")
+    assert sm.is_active()
+
+    # Update spinner message
+    sm.update("Still Thinking...")
+    assert sm.is_active()
+
+    # Stop spinner with None
+    sm.update(None)
+    assert not sm.is_active()
+
+    # Repeated stops are safe and idempotent
+    sm.stop()
+    assert not sm.is_active()
+
+

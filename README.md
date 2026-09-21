@@ -25,7 +25,7 @@ An autonomous, framework-free CLI coding agent powered by OpenRouter's free-tier
 5. **ReAct Prompted Fallback with Retry**: Works across models with or without native tool-calling capabilities using structured JSON blocks, validation schemas, and self-healing single-retry prompts.
 6. **Strict Path Jailing**: Every file read, write, edit, and search is sandboxed to the active workspace. Traversal attempts (e.g. `../../`) are blocked with a clear `PathJailError`.
 7. **Interactive Safety Modals**: Displays syntax-highlighted unified diffs before modifying files and previews shell commands before execution (pass `--yes` / `-y` to auto-approve).
-8. **Rich Terminal UX**: Formatted terminal output powered by `rich` and `typer`, detailing model thoughts, tool calls, execution outputs, and final responses.
+8. **Rich Terminal UX**: Formatted terminal output powered by `rich` and `typer`, featuring animated background loading spinners (`Thinking...`), formatted model thoughts, tool calls, execution outputs, and final responses.
 
 ---
 

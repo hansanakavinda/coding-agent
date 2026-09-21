@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from core.fallback_parser import generate_prompted_tools_instruction, parse_prompted_tool_calls
-from core.types import AgentResult, AgentStep, ConfirmationCallback, ToolCall
+from core.types import AgentResult, AgentStep, ConfirmationCallback, StatusCallback, ToolCall
 from memory.context import ContextManager
 from memory.session import SessionManager
 from providers.base import LLMProvider
@@ -32,6 +32,7 @@ class AgentLoop:
         system_prompt: str = DEFAULT_SYSTEM_PROMPT,
         max_iterations: int = 15,
         on_step: Callable[[AgentStep], None] | None = None,
+        on_status: StatusCallback | None = None,
         confirmation_callback: ConfirmationCallback | None = None,
         enable_prompted_fallback: bool = True,
         context_manager: ContextManager | None = None,
@@ -45,6 +46,7 @@ class AgentLoop:
         self.system_prompt = system_prompt
         self.max_iterations = max_iterations
         self.on_step = on_step
+        self.on_status = on_status
         self.confirmation_callback = confirmation_callback
         self.enable_prompted_fallback = enable_prompted_fallback
         self.context_manager = context_manager or ContextManager()
@@ -85,7 +87,13 @@ class AgentLoop:
             # Prune message history if exceeding token budget
             messages = self.context_manager.prune_messages(messages)
 
-            response = self.provider.complete(messages=messages, tools=tool_schemas)
+            if self.on_status:
+                self.on_status("Thinking...")
+            try:
+                response = self.provider.complete(messages=messages, tools=tool_schemas)
+            finally:
+                if self.on_status:
+                    self.on_status(None)
 
             # Check if model emitted content
             content_text = response.content or ""
